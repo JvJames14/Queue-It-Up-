@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Queue It Up!</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0a1a; --panel: #221c3a; --accent: #ff3d9a; --accent-2: #7c4dff;
+    --text: #f7f4ff; --muted: #b3a9d6; --gold: #ffd94a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(circle at 15% -10%, rgba(255,61,154,0.25), transparent 45%),
+      radial-gradient(circle at 90% 10%, rgba(124,77,255,0.28), transparent 50%),
+      radial-gradient(circle at 50% 100%, rgba(255,217,74,0.10), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* A 16:9 "TV screen" that always fits the viewport with no scrolling, letterboxed if needed.
+     Everything inside scales with container-query units (cqw/cqh/cqmin) relative to THIS box,
+     not the raw window — so it stays proportional at any window size or shape. */
+  .tv-frame {
+    width: min(100vw, 177.78vh);
+    height: min(100vh, 56.25vw);
+    container-type: size;
+    overflow: hidden;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 1.5cqh 2.5cqw;
+  }
+  /* Pinned to the top always — doesn't move or resize as the content below it changes */
+  .header-row {
+    flex-shrink: 0; text-align: center; margin-top: 2.8cqh;
+    transition: margin-top 0.2s ease, font-size 0.2s ease;
+  }
+  /* On the video page specifically, shrink the header and drop the extra top
+     margin so the video and song info underneath have room to fully show. */
+  .tv-frame.video-focus .header-row { margin-top: 0.4cqh; }
+  .tv-frame.video-focus .logo-mark { font-size: 6cqmin; margin-bottom: 0.2cqh; }
+  .tv-frame.video-focus h1 { font-size: 2.6cqmin; margin: 0 0 0.4cqh; }
+  .wrap {
+    flex: 1; width: 100%; min-height: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; overflow: hidden;
+  }
+  /* Winner-selection screen: anchor content to the top (right under the title) instead of
+     centering it, so the prompt sits close to the header rather than floating mid-screen. */
+  /* Picking screen (prompt + round/judge info, before reveal): anchor to the top too. */
+  .wrap:has(#game-view:not(.hidden):not(.focus-mode)) { justify-content: flex-start; padding-top: 0; }
+  /* Winner-selection screen: same top-anchoring, with a bit more breathing room under the logo. */
+  .wrap:has(#game-view.choosing-chrome) { justify-content: flex-start; padding-top: 0; }
+
+  .logo-mark { font-size: 18cqmin; line-height: 1; margin-bottom: 0.8cqh; filter: drop-shadow(0 0 2.2cqmin rgba(255,61,154,0.4)); }
+  h1 {
+    font-family: 'Fredoka', -apple-system, sans-serif;
+    font-weight: 700;
+    font-size: 10cqmin;
+    margin: 0 0 1.5cqh;
+    letter-spacing: 0.01em;
+    background: linear-gradient(90deg, #ff3d9a, #ffd94a 50%, #7c4dff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 1.8cqmin rgba(255, 61, 154, 0.35));
+  }
+  .code-box {
+    background: linear-gradient(135deg, var(--accent-2), var(--accent));
+    border-radius: 2cqmin; padding: 2.8cqh 4.5cqw; margin: 2.2cqh 0;
+    box-shadow: 0 0 4.5cqmin rgba(255, 61, 154, 0.25), 0 0 0 1px rgba(255,255,255,0.08) inset;
+  }
+  .code-box .label { font-size: 1.5cqmin; text-transform: uppercase; letter-spacing: 0.15em; opacity: 0.9; font-weight: 600; }
+  .code-box .code {
+    font-family: 'Fredoka', sans-serif; font-size: 9.5cqmin; font-weight: 700;
+    letter-spacing: 0.18em; margin-top: 0.6cqh; text-shadow: 0 0.3cqmin 0 rgba(0,0,0,0.15);
+  }
+  .code-box .hint { font-size: 1.6cqmin; opacity: 0.95; margin-top: 1cqh; }
+  .lobby-top-row { display: flex; align-items: center; justify-content: center; gap: 5cqw; flex-wrap: wrap; }
+  .qr-section #qrcode { display: inline-block; padding: 10px; background: #fff; border-radius: 1.2cqmin; line-height: 0; }
+  .qr-unavailable { font-size: 1.1cqmin; color: var(--muted); max-width: 60cqw; margin: 1.2cqh auto; }
+  .round-header { font-family: 'Fredoka', sans-serif; font-size: 2.7cqmin; font-weight: 600; color: var(--muted); margin-top: 20px; margin-bottom: 0.9cqh; }
+  .judge-banner {
+    background: rgba(255, 217, 74, 0.14); border: 2px solid var(--gold); color: var(--gold);
+    border-radius: 999px; display: inline-block; padding: 1.2cqh 3cqw; font-size: 2cqmin; font-weight: 700; margin-bottom: 1.8cqh;
+  }
+  .prompt-box {
+    padding: 0.6cqh 200px; margin: 20px auto 2cqh;
+    font-size: 3cqmin; font-weight: 700; max-width: 92cqw;
+  }
+  .prompt-box .prompt-label { display: block; font-size: 1.5cqmin; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.9cqh; }
+  .players { display: flex; flex-wrap: wrap; gap: 1.4cqmin; justify-content: center; margin: 2cqh 0; max-height: 20cqh; overflow-y: auto; }
+  .player-chip {
+    background: var(--panel); border: 2px solid #3c3560; border-radius: 999px;
+    padding: 1.2cqh 2.4cqw; font-size: 2cqmin; display: flex; align-items: center; gap: 0.9cqmin;
+  }
+  .player-chip .dot { width: 1cqmin; height: 1cqmin; border-radius: 50%; background: #5a5382; }
+  .player-chip.picked .dot { background: #4ade80; box-shadow: 0 0 0.9cqmin #4ade80; }
+  .player-chip.judge { border-color: var(--gold); box-shadow: 0 0 1.5cqmin rgba(255,217,74,0.3); }
+  button {
+    border: none; border-radius: 1.5cqmin; padding: 1.9cqh 3cqw; font-weight: 700;
+    font-size: 2.05cqmin; cursor: pointer; margin: 0.7cqmin;
+  }
+  .primary { background: var(--accent); color: #201827; box-shadow: 0 0.5cqh 2cqmin rgba(255,61,154,0.35); }
+  .primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+  .status { color: var(--muted); font-size: 2cqmin; margin: 1.5cqh 0; min-height: 1.2em; }
+  .error-text { color: #ff8a9c; font-size: 1.75cqmin; min-height: 1.2em; }
+  .rounds-picker {
+    display: flex; align-items: center; justify-content: center; gap: 1.5cqmin;
+    margin: 2cqh 0 0.8cqh; font-size: 1.9cqmin; color: var(--muted);
+  }
+  .rounds-picker label {
+    background: var(--panel); border: 2px solid #3c3560; border-radius: 1.2cqmin;
+    padding: 1.05cqh 2.1cqw; cursor: pointer; display: flex; align-items: center; gap: 0.8cqmin;
+  }
+  .rounds-picker input { accent-color: var(--accent); transform: scale(1.2); }
+
+  /* Horizontal 16:9 video box, sized to 75% of the TV frame's width */
+  .yt-video-wrap {
+    position: relative; width: 75cqw; aspect-ratio: 16 / 9; margin: 1.5cqh auto;
+    border-radius: 2cqmin; overflow: hidden; background: #000;
+    box-shadow: 0 0 4.5cqmin rgba(0,0,0,0.5);
+  }
+  .yt-video-wrap.hidden { display: none; }
+  .yt-video-wrap iframe { position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
+
+  .seq-progress { color: var(--muted); font-size: 1.8cqmin; margin-bottom: 1cqh; font-weight: 600; }
+  .seq-card { margin: 1cqh 0; }
+  .seq-card img { width: 22cqmin; height: 22cqmin; border-radius: 2cqmin; object-fit: cover; box-shadow: 0 1cqmin 3cqmin rgba(0,0,0,0.4); }
+  .seq-card img.cover-wide { width: 39cqmin; height: 22cqmin; border-radius: 1.6cqmin; }
+  .seq-card .title { font-size: 2.5cqmin; font-weight: 700; margin-top: 1.5cqh; }
+  .seq-card .artist { color: var(--muted); font-size: 1.9cqmin; margin-top: 0.4cqh; }
+
+  /* Focus mode: while stepping through submissions one at a time, hide the picking-phase
+     chrome (round header, judge banner, prompt, player list) so the video/cover can dominate. */
+  #game-view.focus-mode .seq-card img { width: 34cqmin; height: 34cqmin; }
+  #game-view.focus-mode .seq-card img.cover-wide { width: 60cqmin; height: 34cqmin; }
+  #game-view.focus-mode .seq-card .title { font-size: 3.4cqmin; }
+  #game-view.focus-mode .seq-card .artist { font-size: 2.5cqmin; }
+  #game-view.focus-mode .seq-progress { font-size: 2.4cqmin; }
+
+  /* Choosing screen: title stays shrunk, but round/judge/prompt come back — compactly,
+     so they don't crowd out the submissions grid below them. */
+  #game-view.choosing-chrome .prompt-box { font-size: 3cqmin; padding: 0.4cqh 200px; margin: 20px auto 1.2cqh; max-width: 88cqw; }
+  #game-view.choosing-chrome .prompt-box .prompt-label { font-size: 1.1cqmin; margin-bottom: 0.5cqh; }
+
+  .reveal-list { display: flex; flex-direction: column; gap: 1.2cqh; text-align: left; margin-top: 2cqh; max-width: 72cqw; margin-left: auto; margin-right: auto; max-height: 55cqh; overflow-y: auto; }
+
+  /* More than 2 submissions: switch to two columns (4 rows, filled top row first) so everything
+     still fits on screen at once — the host screen never scrolls, unlike the judge's phone. */
+  .reveal-list.two-col {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-flow: row;
+    gap: 1.4cqh 1.8cqw;
+    max-width: 95cqw;
+    max-height: none;
+    overflow: visible;
+  }
+  .reveal-list.two-col .reveal-card { padding: 1.6cqh 2.2cqw; gap: 1.6cqw; }
+  .reveal-list.two-col .reveal-card img { width: 7.5cqmin; height: 7.5cqmin; }
+  .reveal-list.two-col .reveal-card img.cover-wide { width: 13.3cqmin; height: 7.5cqmin; }
+  .reveal-list.two-col .reveal-card .meta .title { font-size: 2cqmin; }
+  .reveal-list.two-col .reveal-card .meta .artist { font-size: 1.75cqmin; }
+  .reveal-list.two-col .reveal-card .meta .by { font-size: 1.6cqmin; }
+  .reveal-list.two-col .winner-badge { font-size: 1.7cqmin; padding: 0.8cqh 1.5cqw; }
+  .reveal-card {
+    display: flex; align-items: center; gap: 1.8cqw; background: var(--panel);
+    border-radius: 1.8cqmin; padding: 1.5cqh 2.2cqw; border: 2px solid transparent;
+  }
+  .reveal-card.now-playing { border-color: var(--accent); box-shadow: 0 0 2.2cqmin rgba(255,61,154,0.3); }
+  .reveal-card img { width: 7cqmin; height: 7cqmin; border-radius: 1.2cqmin; }
+  .reveal-card img.cover-wide { width: 12.4cqmin; height: 7cqmin; object-fit: cover; }
+  .reveal-card .meta { flex: 1; }
+  .reveal-card .meta .title { font-weight: 700; font-size: 2cqmin; }
+  .reveal-card .meta .artist { color: var(--muted); font-size: 1.75cqmin; }
+  .reveal-card .meta .by { font-size: 1.55cqmin; color: var(--accent); margin-top: 0.4cqh; font-weight: 600; }
+  .winner-badge {
+    background: var(--gold); color: #201827; font-weight: 800; font-size: 1.7cqmin;
+    padding: 0.9cqh 1.8cqw; border-radius: 999px; white-space: nowrap;
+  }
+  .score-row {
+    display: flex; justify-content: space-between; background: var(--panel);
+    border-radius: 1.8cqmin; padding: 1.7cqh 2.7cqw; margin-bottom: 1.2cqh; font-weight: 600; font-size: 2.3cqmin;
+    max-width: 52cqw; margin-left: auto; margin-right: auto;
+  }
+  h2 { font-family: 'Fredoka', sans-serif; font-size: 3.6cqmin; margin: 0.8cqh 0; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="tv-frame">
+<div class="header-row">
+  <div class="logo-mark">🎧</div>
+  <h1>Queue It Up!</h1>
+</div>
+<div class="wrap">
+  <div id="lobby-view">
+    <div class="lobby-top-row">
+      <div class="code-box">
+        <div class="label">Room code</div>
+        <div class="code" id="room-code">····</div>
+        <div class="hint">Players: open the game on your phone and enter this code</div>
+      </div>
+      <div id="qr-section" class="qr-section hidden">
+        <div id="qrcode"></div>
+      </div>
+    </div>
+    <div id="qr-unavailable" class="qr-unavailable hidden">
+      Couldn't detect this computer's network address for a QR code — players can still join by typing the room code above at your game's URL.
+    </div>
+    <div class="players" id="lobby-players-list"></div>
+
+    <div class="rounds-picker">
+      <span>Turns per player:</span> <strong id="rounds-display-lobby">2</strong>
+    </div>
+    <button class="primary" id="start-game-btn" disabled>Start game</button>
+    <div class="error-text" id="lobby-error"></div>
+  </div>
+
+  <div id="game-view" class="hidden">
+    <div class="prompt-box" id="prompt-box">
+      <span class="prompt-label">Prompt</span>
+      <span id="prompt-text"></span>
+    </div>
+    <div class="round-header" id="round-label"></div>
+    <div class="judge-banner" id="judge-banner"></div>
+    <div class="players" id="arena-players-list"></div>
+    <div class="status" id="picking-status"></div>
+
+    <!-- Lives outside sequential-view/reveal-list so it stays independently showable during
+         BOTH the one-at-a-time walkthrough AND replays from the winner-selection list. -->
+    <div class="yt-video-wrap hidden" id="yt-video-wrap"><div id="yt-player"></div></div>
+
+    <!-- One-at-a-time walkthrough -->
+    <div id="sequential-view" class="hidden">
+      <div class="seq-progress" id="seq-progress"></div>
+      <div class="seq-card" id="seq-cover-card">
+        <img id="seq-cover" src="" alt="" />
+      </div>
+      <div class="title" id="seq-title" style="font-size:2.5cqmin; font-weight:700;"></div>
+      <div class="artist" id="seq-artist" style="color:var(--muted); font-size:1.9cqmin;"></div>
+    </div>
+
+    <!-- Full list, shown once every pick has been viewed -->
+    <div class="reveal-list hidden" id="reveal-list"></div>
+  </div>
+
+  <div id="gameover-view" class="hidden">
+    <h2>🏆 Final Scores</h2>
+    <div id="final-scoreboard"></div>
+
+    <div class="rounds-picker">
+      <span>Turns per player:</span> <strong id="rounds-display-again">2</strong>
+    </div>
+    <button class="primary" id="play-again-btn">Play again?</button>
+    <div class="error-text" id="gameover-error"></div>
+  </div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const audio = new Audio();
+
+  // ---- Sound effects, synthesized with the Web Audio API (no external files needed) ----
+  let audioCtx = null;
+  function getAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  document.addEventListener('click', () => { try { getAudioCtx(); } catch (e) {} }, { once: true });
+
+  function playTone(freq, startTime, duration, type, gainPeak) {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, startTime);
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(gainPeak == null ? 0.22 : gainPeak, startTime + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.03);
+  }
+
+  function playSweep(freqStart, freqEnd, startTime, duration, type, gainPeak) {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type || 'sawtooth';
+    osc.frequency.setValueAtTime(freqStart, startTime);
+    osc.frequency.exponentialRampToValueAtTime(freqEnd, startTime + duration);
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(gainPeak == null ? 0.2 : gainPeak, startTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.03);
+  }
+
+  const sfx = {
+    playerJoined() {
+      const t = getAudioCtx().currentTime;
+      playTone(660, t, 0.12, 'triangle', 0.18);
+      playTone(880, t + 0.09, 0.15, 'triangle', 0.18);
+    },
+    pickSubmitted() {
+      const t = getAudioCtx().currentTime;
+      playTone(520, t, 0.12, 'sine', 0.16);
+    },
+    allPicked() {
+      const t = getAudioCtx().currentTime;
+      playTone(523.25, t, 0.12, 'triangle', 0.2);
+      playTone(659.25, t + 0.1, 0.12, 'triangle', 0.2);
+      playTone(783.99, t + 0.2, 0.24, 'triangle', 0.22);
+    },
+    shuffle() {
+      const t = getAudioCtx().currentTime;
+      for (let i = 0; i < 6; i++) {
+        playTone(280 + Math.random() * 520, t + i * 0.045, 0.05, 'square', 0.1);
+      }
+    },
+    revealPicks() {
+      const t = getAudioCtx().currentTime;
+      playSweep(220, 1000, t, 0.35, 'sawtooth', 0.18);
+    },
+    winnerChosen() {
+      const t = getAudioCtx().currentTime;
+      playTone(523.25, t, 0.14, 'triangle', 0.24);
+      playTone(659.25, t + 0.12, 0.14, 'triangle', 0.24);
+      playTone(783.99, t + 0.24, 0.14, 'triangle', 0.24);
+      playTone(1046.5, t + 0.36, 0.4, 'triangle', 0.26);
+    },
+    nextRound() {
+      const t = getAudioCtx().currentTime;
+      playTone(440, t, 0.08, 'sine', 0.16);
+      playTone(660, t + 0.07, 0.14, 'sine', 0.16);
+    },
+    playAgain() {
+      const t = getAudioCtx().currentTime;
+      playTone(392, t, 0.1, 'triangle', 0.18);
+      playTone(523.25, t + 0.09, 0.1, 'triangle', 0.18);
+      playTone(659.25, t + 0.18, 0.2, 'triangle', 0.2);
+    }
+  };
+
+  // ---- YouTube IFrame player setup ----
+  let ytPlayer = null;
+  let ytReady = false;
+
+  function onYouTubeIframeAPIReady() {
+    console.log('[YouTube] IFrame API loaded, creating player…');
+    ytPlayer = new YT.Player('yt-player', {
+      height: '315',
+      width: '560',
+      playerVars: { rel: 0 },
+      events: {
+        onReady: () => { ytReady = true; console.log('[YouTube] Player ready.'); },
+        onStateChange: handleYtStateChange,
+        onError: (e) => console.error('[YouTube] Player error, code:', e.data)
+      }
+    });
+  }
+  // If this never logs anything, the youtube.com/iframe_api script itself never loaded —
+  // almost always an ad blocker or privacy extension blocking youtube.com, not a bug in this page.
+  setTimeout(() => {
+    if (!ytReady) console.warn('[YouTube] Still not ready after 5s — check for an ad blocker or network restriction on youtube.com.');
+  }, 5000);
+  window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
+
+  function handleYtStateChange(event) {
+    // Clips now play to completion (or until the judge advances) — no fixed time cap.
+    // This just reports back when a clip finishes entirely on its own.
+    if (event.data === YT.PlayerState.ENDED) {
+      socket.emit('host:playback-ended');
+    }
+  }
+
+  const ytVideoWrap = document.getElementById('yt-video-wrap');
+
+  const roomCodeEl = document.getElementById('room-code');
+  const lobbyPlayersListEl = document.getElementById('lobby-players-list');
+  const startGameBtn = document.getElementById('start-game-btn');
+  const lobbyErrorEl = document.getElementById('lobby-error');
+  const lobbyView = document.getElementById('lobby-view');
+
+  const gameView = document.getElementById('game-view');
+  const roundLabelEl = document.getElementById('round-label');
+  const judgeBannerEl = document.getElementById('judge-banner');
+  const promptBoxEl = document.getElementById('prompt-box');
+  const promptTextEl = document.getElementById('prompt-text');
+  const arenaPlayersListEl = document.getElementById('arena-players-list');
+  const pickingStatusEl = document.getElementById('picking-status');
+
+  const sequentialView = document.getElementById('sequential-view');
+  const seqProgress = document.getElementById('seq-progress');
+  const seqCoverCard = document.getElementById('seq-cover-card');
+  const seqCover = document.getElementById('seq-cover');
+  const seqTitle = document.getElementById('seq-title');
+  const seqArtist = document.getElementById('seq-artist');
+  const revealListEl = document.getElementById('reveal-list');
+
+  const gameoverView = document.getElementById('gameover-view');
+  const finalScoreboardEl = document.getElementById('final-scoreboard');
+  const playAgainBtn = document.getElementById('play-again-btn');
+  const gameoverErrorEl = document.getElementById('gameover-error');
+
+  let currentPhase = 'lobby';
+  let gameStarted = false;
+  let revealPicks = [];      // full picks array from the current reveal
+  let revealSubPhase = null; // 'sequential' | 'choosing'
+  let currentRevealIndex = 0;
+
+  socket.emit('host:create-room', {}, (res) => {
+    if (!res.ok) return;
+    roomCodeEl.textContent = res.code;
+
+    if (res.localIp) {
+      const joinUrl = `http://${res.localIp}:${res.port}/?code=${res.code}`;
+      document.getElementById('qr-section').classList.remove('hidden');
+      new QRCode(document.getElementById('qrcode'), {
+        text: joinUrl,
+        width: 180,
+        height: 180,
+        colorDark: '#14121f',
+        colorLight: '#ffffff'
+      });
+    } else {
+      document.getElementById('qr-unavailable').classList.remove('hidden');
+    }
+  });
+
+  startGameBtn.addEventListener('click', () => {
+    getAudioCtx();
+    socket.emit('start-game');
+  });
+
+  playAgainBtn.addEventListener('click', () => {
+    getAudioCtx();
+    gameoverErrorEl.textContent = '';
+    socket.emit('play-again');
+  });
+
+  socket.on('room:start-game-error', ({ error }) => {
+    lobbyErrorEl.textContent = error;
+    gameoverErrorEl.textContent = error;
+  });
+
+  // The leader's phone is the only place this is actually chosen — this screen just displays it live.
+  socket.on('room:rounds-selected', ({ turnsPerPlayer }) => {
+    document.getElementById('rounds-display-lobby').textContent = turnsPerPlayer;
+    document.getElementById('rounds-display-again').textContent = turnsPerPlayer;
+  });
+
+  function renderPlayerChips(container, players, showScore) {
+    container.innerHTML = '';
+    if (!players.length) {
+      container.innerHTML = '<span style="color:var(--muted)">Waiting for players to join…</span>';
+      return;
+    }
+    players.forEach(p => {
+      const chip = document.createElement('div');
+      chip.className = 'player-chip' + (p.hasPicked ? ' picked' : '') + (p.isJudge ? ' judge' : '');
+      const label = (p.isJudge ? '👑 ' : '') + escapeHtml(p.name) + (showScore ? ` · ${p.score} pts` : '');
+      chip.innerHTML = `<span class="dot"></span> ${label}`;
+      container.appendChild(chip);
+    });
+  }
+
+  socket.on('room:players-updated', (players) => {
+    renderPlayerChips(lobbyPlayersListEl, players, false);
+    renderPlayerChips(arenaPlayersListEl, players, true);
+    startGameBtn.disabled = players.length < 3 || gameStarted;
+
+    if (gameStarted && currentPhase === 'picking') {
+      const nonJudge = players.filter(p => !p.isJudge);
+      const pickedCount = nonJudge.filter(p => p.hasPicked).length;
+      pickingStatusEl.textContent = !nonJudge.length
+        ? ''
+        : pickedCount === nonJudge.length
+          ? 'All players in'
+          : `${pickedCount}/${nonJudge.length} players have picked…`;
+    }
+  });
+
+  socket.on('room:player-joined', () => {
+    sfx.playerJoined();
+  });
+
+  socket.on('room:pick-submitted', () => {
+    sfx.pickSubmitted();
+  });
+
+  socket.on('room:all-picked', () => {
+    sfx.allPicked();
+  });
+
+  socket.on('room:round-started', ({ roundNumber, totalRounds, prompt, judgeName }) => {
+    gameStarted = true;
+    currentPhase = 'picking';
+    lobbyView.classList.add('hidden');
+    gameoverView.classList.add('hidden');
+    gameView.classList.remove('hidden');
+    exitSequentialFocus();
+    roundLabelEl.textContent = `Round ${roundNumber} of ${totalRounds}`;
+    judgeBannerEl.textContent = `👑 ${judgeName} is judging this round`;
+    promptTextEl.textContent = prompt;
+    sequentialView.classList.add('hidden');
+    revealListEl.classList.add('hidden');
+    revealListEl.innerHTML = '';
+    pickingStatusEl.textContent = '';
+    stopAllPlayback();
+  });
+
+  socket.on('room:next-round-sound', () => {
+    sfx.nextRound();
+  });
+
+  socket.on('room:play-again-sound', () => {
+    sfx.playAgain();
+  });
+
+  socket.on('room:prompt-changed', ({ prompt }) => {
+    promptTextEl.textContent = prompt;
+    sfx.shuffle();
+  });
+
+  socket.on('room:reveal', ({ picks, revealIndex, subPhase }) => {
+    currentPhase = 'reveal';
+    pickingStatusEl.textContent = '';
+    revealPicks = picks;
+    revealSubPhase = subPhase;
+    currentRevealIndex = revealIndex;
+    showSequentialCard();
+    sfx.revealPicks();
+  });
+
+  socket.on('room:reveal-advanced', ({ revealIndex }) => {
+    currentRevealIndex = revealIndex;
+    showSequentialCard();
+  });
+
+  // While reviewing submissions one at a time, hide the picking-phase chrome (round header,
+  // judge banner, prompt, player list) so only the logo/title sits above a much bigger video,
+  // and shrink the header itself so the video and song info both fully fit on screen.
+  const tvFrameEl = document.querySelector('.tv-frame');
+  function enterSequentialFocus() {
+    roundLabelEl.classList.add('hidden');
+    judgeBannerEl.classList.add('hidden');
+    promptBoxEl.classList.add('hidden');
+    arenaPlayersListEl.classList.add('hidden');
+    pickingStatusEl.classList.add('hidden');
+    gameView.classList.add('focus-mode');
+    gameView.classList.remove('choosing-chrome');
+    tvFrameEl.classList.add('video-focus');
+  }
+  function exitSequentialFocus() {
+    roundLabelEl.classList.remove('hidden');
+    judgeBannerEl.classList.remove('hidden');
+    promptBoxEl.classList.remove('hidden');
+    arenaPlayersListEl.classList.remove('hidden');
+    pickingStatusEl.classList.remove('hidden');
+    gameView.classList.remove('focus-mode');
+    gameView.classList.remove('choosing-chrome');
+    tvFrameEl.classList.remove('video-focus');
+  }
+
+  function showSequentialCard() {
+    revealListEl.classList.add('hidden');
+    sequentialView.classList.remove('hidden');
+    enterSequentialFocus();
+    ytVideoWrap.classList.add('hidden');
+    seqCoverCard.classList.remove('hidden');
+
+    const entry = revealPicks[currentRevealIndex];
+    if (!entry) return;
+    seqProgress.textContent = `Song ${currentRevealIndex + 1} of ${revealPicks.length}`;
+    seqCover.src = entry.track.cover;
+    seqCover.classList.toggle('cover-wide', !!entry.track.youtube);
+    seqTitle.innerHTML = escapeHtml(entry.track.title);
+    seqArtist.textContent = entry.track.artist;
+  }
+
+  socket.on('room:reveal-choosing', () => {
+    revealSubPhase = 'choosing';
+    sequentialView.classList.add('hidden');
+    stopAllPlayback(); // start clean — nothing should be mid-play from the walkthrough
+    // Keep the title shrunk (still "focus mode"), but bring back round/judge/prompt context —
+    // shown compactly so the 8-song grid still has the room it needs.
+    roundLabelEl.classList.remove('hidden');
+    judgeBannerEl.classList.remove('hidden');
+    promptBoxEl.classList.remove('hidden');
+    gameView.classList.add('choosing-chrome');
+    renderFullRevealList();
+  });
+
+  function renderFullRevealList() {
+    revealListEl.classList.remove('hidden');
+    revealListEl.classList.toggle('two-col', revealPicks.length > 2);
+    revealListEl.innerHTML = '';
+    revealPicks.forEach((entry, i) => {
+      const card = document.createElement('div');
+      card.className = 'reveal-card';
+      card.dataset.index = i;
+      card.innerHTML = `
+        <img src="${entry.track.cover}" alt="" class="${entry.track.youtube ? 'cover-wide' : ''}" />
+        <div class="meta">
+          <div class="title">${escapeHtml(entry.track.title)}</div>
+          <div class="artist">${escapeHtml(entry.track.artist)}</div>
+          <div class="by hidden">Picked by ${escapeHtml(entry.playerName)}</div>
+        </div>
+        <span class="winner-badge hidden">🏆 WINNER</span>
+      `;
+      revealListEl.appendChild(card);
+    });
+  }
+
+  socket.on('room:now-playing', ({ index, track }) => {
+    // Highlight in whichever view is currently showing
+    document.querySelectorAll('.reveal-card').forEach(c => c.classList.remove('now-playing'));
+    const card = revealListEl.querySelector(`.reveal-card[data-index="${index}"]`);
+    if (card) card.classList.add('now-playing');
+
+    if (track.youtube && ytReady) {
+      // Plays until the video ends naturally or the judge advances — no fixed time cap.
+      audio.pause();
+      seqCoverCard.classList.add('hidden');
+      ytVideoWrap.classList.remove('hidden');
+      ytPlayer.loadVideoById({
+        videoId: track.youtube.videoId,
+        startSeconds: track.youtube.startSeconds || 0
+      });
+      ytPlayer.playVideo();
+    } else {
+      if (ytReady) ytPlayer.stopVideo();
+      ytVideoWrap.classList.add('hidden');
+      seqCoverCard.classList.remove('hidden');
+      audio.src = track.previewUrl;
+      audio.play();
+    }
+  });
+
+  socket.on('room:stop-playback', () => {
+    stopAllPlayback();
+  });
+
+  function stopAllPlayback() {
+    audio.pause();
+    if (ytReady) ytPlayer.pauseVideo();
+    ytVideoWrap.classList.add('hidden');
+    seqCoverCard.classList.remove('hidden');
+    document.querySelectorAll('.reveal-card').forEach(c => c.classList.remove('now-playing'));
+  }
+
+  audio.addEventListener('ended', () => {
+    socket.emit('host:playback-ended');
+  });
+
+  socket.on('room:winner-chosen', ({ index }) => {
+    const card = revealListEl.querySelector(`.reveal-card[data-index="${index}"]`);
+    if (card) card.querySelector('.winner-badge').classList.remove('hidden');
+    // Reveal who picked what for every song now that judging is done
+    revealListEl.querySelectorAll('.by').forEach(el => el.classList.remove('hidden'));
+    sfx.winnerChosen();
+  });
+
+  socket.on('room:game-over', ({ scoreboard, turnsPerPlayer }) => {
+    exitSequentialFocus();
+    gameView.classList.add('hidden');
+    gameoverView.classList.remove('hidden');
+    gameoverErrorEl.textContent = '';
+    document.getElementById('rounds-display-lobby').textContent = turnsPerPlayer;
+    document.getElementById('rounds-display-again').textContent = turnsPerPlayer;
+    finalScoreboardEl.innerHTML = '';
+    scoreboard.forEach((p, i) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      const row = document.createElement('div');
+      row.className = 'score-row';
+      row.innerHTML = `<span>${medal} ${escapeHtml(p.name)}</span><span>${p.score} pts</span>`;
+      finalScoreboardEl.appendChild(row);
+    });
+  });
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Queue It Up! — Player</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0a1a; --panel: #221c3a; --accent: #ff3d9a; --accent-2: #7c4dff;
+    --text: #f7f4ff; --muted: #b3a9d6; --gold: #ffd94a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(circle at top, #241f3a, var(--bg));
+    color: var(--text); min-height: 100vh; padding: 24px 16px 90px;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; }
+  h1 {
+    font-family: 'Fredoka', -apple-system, sans-serif;
+    font-weight: 700; font-size: 2rem; margin-bottom: 6px; text-align: center;
+    background: linear-gradient(90deg, #ff3d9a, #ffd94a 50%, #7c4dff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 12px rgba(255, 61, 154, 0.3));
+  }
+  .card { background: var(--panel); border-radius: 14px; padding: 20px; margin-top: 20px; }
+  input[type="text"], input[type="number"] {
+    width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #35304f;
+    background: #14121f; color: var(--text); font-size: 1rem; margin-bottom: 10px;
+  }
+  input:focus { outline: 2px solid var(--accent); }
+  input.code-input { text-transform: uppercase; letter-spacing: 0.2em; font-weight: 700; text-align: center; }
+  button {
+    border: none; border-radius: 10px; padding: 13px 18px; font-weight: 700;
+    font-size: 1rem; cursor: pointer; width: 100%;
+  }
+  .primary { background: var(--accent); color: #201827; box-shadow: 0 4px 16px rgba(255,61,154,0.35); }
+  .primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+  .secondary { background: #302b4a; color: var(--text); }
+  .error { color: #ff8a9c; font-size: 0.85rem; margin-top: 6px; min-height: 1.2em; }
+
+  .round-header { font-family: 'Fredoka', sans-serif; font-size: 1rem; font-weight: 600; color: var(--muted); text-align: center; margin-top: 4px; }
+  .judge-banner {
+    background: rgba(255, 217, 74, 0.14); border: 2px solid var(--gold); color: var(--gold);
+    border-radius: 999px; padding: 9px 16px; font-size: 0.87rem; font-weight: 700; text-align: center; margin: 10px 0;
+  }
+  .prompt-box {
+    background: linear-gradient(135deg, var(--accent-2), var(--accent));
+    border-radius: 14px; padding: 16px 18px; margin: 10px 0 16px; font-size: 1.05rem; font-weight: 600;
+    box-shadow: 0 0 30px rgba(255, 61, 154, 0.2);
+  }
+  .prompt-box span { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85; margin-bottom: 4px; }
+
+  .mode-toggle { display: flex; gap: 8px; margin: 14px 0; }
+  .mode-btn {
+    flex: 1; background: var(--panel); border: 1px solid #35304f; color: var(--muted);
+    border-radius: 10px; padding: 11px 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer; text-align: center;
+  }
+  .mode-btn.active { background: var(--accent); color: #201827; border-color: var(--accent); box-shadow: 0 0 16px rgba(255,61,154,0.35); }
+
+  form.search-form { display: flex; gap: 8px; margin: 16px 0; }
+  form.search-form input { margin-bottom: 0; flex: 1; }
+  form.search-form button { width: auto; }
+
+  .status { color: var(--muted); font-size: 0.85rem; margin: 8px 0 16px; min-height: 1.2em; }
+  .results { display: flex; flex-direction: column; gap: 10px; }
+  .track {
+    display: flex; align-items: center; gap: 12px; background: var(--panel);
+    border-radius: 12px; padding: 10px 12px; border: 1px solid transparent;
+  }
+  .track.selected { border-color: var(--accent); }
+  .track img { width: 48px; height: 48px; border-radius: 8px; flex-shrink: 0; }
+  .meta { flex: 1; min-width: 0; }
+  .meta .title { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta .artist { font-size: 0.8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .play-btn { background: #302b4a; color: var(--text); width: 38px; height: 38px; border-radius: 50%; font-size: 0.95rem; padding: 0; }
+  .play-btn.playing { background: var(--accent-2); }
+  .pick-btn { background: transparent; border: 1px solid var(--accent); color: var(--accent); font-size: 0.8rem; padding: 8px 12px; width: auto; }
+  .pick-btn.picked { background: var(--accent); color: #201827; }
+
+  .locked-banner {
+    background: #24304a; border: 1px solid #3a4d78; border-radius: 12px; padding: 20px;
+    text-align: center; font-size: 0.9rem;
+  }
+  .locked-banner p { margin: 0 0 16px; font-size: 1rem; font-weight: 700; }
+  #pick-back-btn { background: #9691b0; color: #1a1730; }
+
+  .yt-result { display: flex; align-items: center; gap: 10px; background: var(--panel); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; border: 1px solid transparent; }
+  .yt-result.hidden-by-selection { display: none; }
+  .yt-result img { width: 48px; height: 27px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+  .yt-result .meta .title { font-size: 0.82rem; }
+  .yt-result .meta .artist { font-size: 0.72rem; }
+  .yt-select-btn { width: auto; font-size: 0.75rem; padding: 6px 10px; background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+  .yt-select-btn.selected { background: var(--accent); color: #201827; }
+
+  /* Responsive 16:9 video box, used only for the picking-time preview now */
+  .yt-video-wrap {
+    position: relative; width: 100%; margin: 10px auto; padding-bottom: 56.25%;
+    height: 0; border-radius: 12px; overflow: hidden; background: #000;
+  }
+  .yt-video-wrap.hidden { display: none; }
+  .yt-video-wrap iframe { position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
+
+  .time-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+  .time-row label { font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
+  .time-row input { margin-bottom: 0; width: auto; flex: 1; }
+  #yt-back-btn { margin-bottom: 10px; }
+
+  .seq-progress { color: var(--muted); font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 0.85rem; text-align: center; margin-bottom: 6px; }
+  .seq-card { text-align: center; margin: 6px 0 14px; }
+  .seq-card img { width: 110px; height: 110px; border-radius: 12px; object-fit: cover; }
+  .seq-card img.cover-wide { width: 196px; height: 110px; border-radius: 10px; }
+  .seq-card .title { font-size: 1.05rem; font-weight: 700; margin-top: 8px; }
+  .seq-card .artist { color: var(--muted); font-family: 'Fredoka', sans-serif; font-weight: 600; font-size: 0.9rem; }
+
+  .reveal-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  .reveal-card {
+    display: flex; align-items: center; gap: 12px; background: var(--panel);
+    border-radius: 12px; padding: 10px 12px; border: 2px solid transparent;
+  }
+  .reveal-card.now-playing { border-color: var(--accent); }
+  .reveal-card.winner { border-color: var(--gold); }
+  .reveal-card img { width: 48px; height: 48px; border-radius: 8px; }
+  .reveal-card img.cover-wide { width: 85px; height: 48px; border-radius: 6px; object-fit: cover; }
+  .reveal-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+  .winner-btn { background: transparent; border: 1px solid var(--gold); color: var(--gold); font-size: 0.75rem; padding: 6px 10px; width: auto; white-space: nowrap; }
+  .winner-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .score-row {
+    display: flex; justify-content: space-between; background: var(--panel);
+    border-radius: 10px; padding: 12px 18px; margin-bottom: 8px; font-weight: 600;
+  }
+  .rounds-picker {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin: 14px 0 8px; font-size: 0.85rem; color: var(--muted);
+  }
+  .rounds-picker label {
+    background: #14121f; border: 1px solid #35304f; border-radius: 10px;
+    padding: 7px 12px; cursor: pointer; display: flex; align-items: center; gap: 5px;
+  }
+  .rounds-picker input { accent-color: var(--accent); }
+  .waiting-text { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 10px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎧 Queue It Up!</h1>
+
+  <div id="join-view" class="card">
+    <input type="text" id="name-input" placeholder="Your name" maxlength="20" />
+    <input type="text" id="code-input" class="code-input" placeholder="ROOM CODE" maxlength="4" />
+    <button class="primary" id="join-btn">Join room</button>
+    <div class="error" id="join-error"></div>
+  </div>
+
+  <div id="lobby-wait-view" class="hidden card" style="text-align:center;">
+    <p id="lobby-wait-text">You're in! Waiting for the game to start…</p>
+
+    <div id="leader-start-controls" class="hidden">
+      <div class="rounds-picker">
+        <span>Turns per player:</span>
+        <label><input type="radio" name="rounds-lobby" value="1"> 1</label>
+        <label><input type="radio" name="rounds-lobby" value="2" checked> 2</label>
+        <label><input type="radio" name="rounds-lobby" value="3"> 3</label>
+      </div>
+      <button class="primary" id="player-start-btn">Start game</button>
+      <div class="error" id="player-start-error"></div>
+    </div>
+  </div>
+
+  <div id="game-view" class="hidden">
+    <div class="round-header" id="round-label"></div>
+    <div class="judge-banner" id="judge-banner"></div>
+    <div class="prompt-box">
+      <span>Prompt</span>
+      <span id="prompt-text"></span>
+    </div>
+
+    <!-- Non-judge: search + pick -->
+    <div id="picker-panel">
+      <div class="mode-toggle">
+        <button type="button" class="mode-btn active" id="mode-btn-youtube" data-mode="youtube">Choose starting timestamp</button>
+        <button type="button" class="mode-btn" id="mode-btn-itunes" data-mode="itunes">Default timestamp</button>
+      </div>
+
+      <!-- YouTube mode: pick a video and an exact start point (default, leftmost) -->
+      <div id="youtube-mode-panel">
+        <form class="search-form" id="yt-search-form">
+          <input type="text" id="yt-search-input" placeholder="Search YouTube for a song…" autocomplete="off" />
+          <button type="submit" class="secondary">Search</button>
+        </form>
+        <div class="results" id="yt-results"></div>
+
+        <div id="yt-start-picker" class="hidden">
+          <div class="yt-video-wrap" id="yt-preview-wrap"><div id="yt-preview-player"></div></div>
+          <div class="time-row">
+            <label for="yt-start-time">Start at (mm:ss):</label>
+            <input type="text" id="yt-start-time" placeholder="0:00" value="0:00" />
+            <button class="secondary" id="yt-preview-btn" style="width:auto;">▶ Preview</button>
+          </div>
+          <button class="secondary" id="yt-back-btn">← Back</button>
+          <button class="primary" id="yt-use-clip-btn">Pick this clip</button>
+        </div>
+      </div>
+
+      <!-- iTunes mode: standard 30s preview, whatever moment iTunes chose -->
+      <div id="itunes-mode-panel" class="hidden">
+        <form class="search-form" id="search-form">
+          <input type="text" id="search-input" placeholder="Search a song or artist…" autocomplete="off" />
+          <button type="submit" class="primary">Go</button>
+        </form>
+        <div class="status" id="status"></div>
+        <div class="results" id="results"></div>
+      </div>
+    </div>
+
+    <!-- Shown instead of picker-panel once a pick is submitted -->
+    <div id="pick-submitted-view" class="hidden locked-banner">
+      <p>Song submitted<br />waiting for other players</p>
+      <button class="secondary" id="pick-back-btn">← Back to change my pick</button>
+    </div>
+
+    <!-- Non-judge: read-only reveal (mirrors the judge's walkthrough, no video — audio/video only plays on the host screen) -->
+    <div id="viewer-reveal-panel" class="hidden">
+
+      <div id="viewer-sequential-view">
+        <div class="seq-progress" id="viewer-seq-progress"></div>
+        <div class="seq-card" id="viewer-seq-cover-card">
+          <img id="viewer-seq-cover" src="" alt="" />
+          <div class="title" id="viewer-seq-title"></div>
+          <div class="artist" id="viewer-seq-artist"></div>
+        </div>
+      </div>
+
+      <div class="reveal-list hidden" id="viewer-reveal-list"></div>
+    </div>
+
+    <!-- Judge control panel -->
+    <div id="judge-panel" class="hidden">
+      <div id="judge-prereveal">
+        <div class="status" id="judge-status">Waiting for other players to pick…</div>
+        <button class="primary" id="judge-reveal-btn" disabled>Reveal picks</button>
+        <button class="secondary" id="judge-new-prompt-btn" style="margin-top:10px;">🔀 New prompt</button>
+      </div>
+
+      <div id="judge-revealed" class="hidden">
+        <!-- Step 1: one at a time -->
+        <div id="judge-sequential-view">
+          <div class="seq-progress" id="judge-seq-progress"></div>
+          <div class="seq-card" id="judge-seq-cover-card">
+            <img id="judge-seq-cover" src="" alt="" />
+            <div class="title" id="judge-seq-title"></div>
+            <div class="artist" id="judge-seq-artist"></div>
+          </div>
+          <button class="secondary" id="judge-seq-play-btn">▶ Play</button>
+          <button class="primary hidden" id="judge-seq-next-btn" style="margin-top:10px;">Next →</button>
+        </div>
+
+        <!-- Step 2: choose the winner, once every pick has been heard -->
+        <div id="judge-choosing-view" class="hidden">
+          <p style="color:var(--muted); font-size:0.85rem;">You've heard them all — tap ▶ to re-listen, then crown a winner.</p>
+          <div class="reveal-list" id="judge-reveal-list"></div>
+        </div>
+
+        <button class="secondary hidden" id="judge-next-btn" style="margin-top:14px;">Next round →</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="gameover-view" class="hidden card">
+    <h2 style="text-align:center; font-family:'Fredoka',sans-serif;">🏆 Final Scores</h2>
+    <div id="final-scoreboard"></div>
+
+    <div id="leader-again-controls" class="hidden">
+      <div class="rounds-picker">
+        <span>Turns per player:</span>
+        <label><input type="radio" name="rounds-again" value="1"> 1</label>
+        <label><input type="radio" name="rounds-again" value="2" checked> 2</label>
+        <label><input type="radio" name="rounds-again" value="3"> 3</label>
+      </div>
+      <button class="primary" id="play-again-btn">Play again?</button>
+      <div class="error" id="play-again-error"></div>
+    </div>
+    <p id="waiting-again-text" class="waiting-text hidden">Waiting for the room leader to start a new game…</p>
+  </div>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const previewAudio = new Audio(); // local audition only, during picking — never during reveal
+
+  // ---- YouTube preview player used only during picking. Reveal-time video plays on the host screen only. ----
+  let ytPreviewPlayer = null, ytPreviewReady = false;
+  function onYouTubeIframeAPIReady() {
+    ytPreviewPlayer = new YT.Player('yt-preview-player', { height: '200', width: '355', playerVars: { rel: 0 } });
+    ytPreviewReady = true;
+  }
+  window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
+
+  function parseTimeToSeconds(str) {
+    const trimmed = (str || '').trim();
+    if (!trimmed) return 0;
+    if (trimmed.includes(':')) {
+      const [m, s] = trimmed.split(':').map(x => parseInt(x, 10) || 0);
+      return Math.max(0, m * 60 + s);
+    }
+    return Math.max(0, parseInt(trimmed, 10) || 0);
+  }
+  function formatSecondsToTime(totalSeconds) {
+    const s = Math.max(0, Math.floor(totalSeconds));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  // ---- Join flow ----
+  const joinView = document.getElementById('join-view');
+  const lobbyWaitView = document.getElementById('lobby-wait-view');
+  const lobbyWaitText = document.getElementById('lobby-wait-text');
+  const leaderStartControls = document.getElementById('leader-start-controls');
+  const playerStartBtn = document.getElementById('player-start-btn');
+  const playerStartError = document.getElementById('player-start-error');
+
+  const gameView = document.getElementById('game-view');
+  const gameoverView = document.getElementById('gameover-view');
+  const nameInput = document.getElementById('name-input');
+  const codeInput = document.getElementById('code-input');
+  const joinBtn = document.getElementById('join-btn');
+  const joinError = document.getElementById('join-error');
+
+  // If this page was opened via the host's QR code (e.g. ?code=ABCD), pre-fill the room
+  // code so a scanning player only needs to type their name before joining.
+  const urlParams = new URLSearchParams(window.location.search);
+  const codeFromUrl = urlParams.get('code');
+  if (codeFromUrl) {
+    codeInput.value = codeFromUrl.toUpperCase().slice(0, 4);
+    nameInput.focus();
+  }
+
+  const roundLabelEl = document.getElementById('round-label');
+  const judgeBannerEl = document.getElementById('judge-banner');
+  const promptTextEl = document.getElementById('prompt-text');
+
+  const pickerPanel = document.getElementById('picker-panel');
+  const pickSubmittedView = document.getElementById('pick-submitted-view');
+  const pickBackBtn = document.getElementById('pick-back-btn');
+
+  const viewerRevealPanel = document.getElementById('viewer-reveal-panel');
+  const viewerSequentialView = document.getElementById('viewer-sequential-view');
+  const viewerSeqProgress = document.getElementById('viewer-seq-progress');
+  const viewerSeqCoverCard = document.getElementById('viewer-seq-cover-card');
+  const viewerSeqCover = document.getElementById('viewer-seq-cover');
+  const viewerSeqTitle = document.getElementById('viewer-seq-title');
+  const viewerSeqArtist = document.getElementById('viewer-seq-artist');
+  const viewerRevealList = document.getElementById('viewer-reveal-list');
+
+  const judgePanel = document.getElementById('judge-panel');
+  const judgePrereveal = document.getElementById('judge-prereveal');
+  const judgeRevealed = document.getElementById('judge-revealed');
+  const judgeStatusEl = document.getElementById('judge-status');
+  const judgeRevealBtn = document.getElementById('judge-reveal-btn');
+  const judgeNewPromptBtn = document.getElementById('judge-new-prompt-btn');
+  const judgeSequentialView = document.getElementById('judge-sequential-view');
+  const judgeSeqProgress = document.getElementById('judge-seq-progress');
+  const judgeSeqCoverCard = document.getElementById('judge-seq-cover-card');
+  const judgeSeqCover = document.getElementById('judge-seq-cover');
+  const judgeSeqTitle = document.getElementById('judge-seq-title');
+  const judgeSeqArtist = document.getElementById('judge-seq-artist');
+  const judgeSeqPlayBtn = document.getElementById('judge-seq-play-btn');
+  const judgeSeqNextBtn = document.getElementById('judge-seq-next-btn');
+  const judgeChoosingView = document.getElementById('judge-choosing-view');
+  const judgeRevealList = document.getElementById('judge-reveal-list');
+  const judgeNextBtn = document.getElementById('judge-next-btn');
+
+  const searchForm = document.getElementById('search-form');
+  const searchInput = document.getElementById('search-input');
+  const resultsEl = document.getElementById('results');
+  const statusEl = document.getElementById('status');
+  const finalScoreboardEl = document.getElementById('final-scoreboard');
+  const leaderAgainControls = document.getElementById('leader-again-controls');
+  const waitingAgainText = document.getElementById('waiting-again-text');
+  const playAgainBtn = document.getElementById('play-again-btn');
+  const playAgainError = document.getElementById('play-again-error');
+
+  const modeButtons = document.querySelectorAll('.mode-btn');
+  const youtubeModePanel = document.getElementById('youtube-mode-panel');
+  const itunesModePanel = document.getElementById('itunes-mode-panel');
+  const ytSearchForm = document.getElementById('yt-search-form');
+  const ytSearchInput = document.getElementById('yt-search-input');
+  const ytResultsEl = document.getElementById('yt-results');
+  const ytStartPicker = document.getElementById('yt-start-picker');
+  const ytStartTimeInput = document.getElementById('yt-start-time');
+  const ytPreviewBtn = document.getElementById('yt-preview-btn');
+  const ytBackBtn = document.getElementById('yt-back-btn');
+  const ytUseClipBtn = document.getElementById('yt-use-clip-btn');
+
+  let isJudge = false;
+  let isLeader = false;
+  let roundInfo = null;
+  let currentPhase = 'lobby';
+  let currentPlayingPreviewId = null;
+  let pickMode = 'youtube'; // "Choose starting timestamp" is the default mode
+  let selectedYoutubeVideo = null;
+
+  let revealPicks = [];
+  let revealSubPhase = null;
+  let currentRevealIndex = 0;
+  let nowPlayingIndex = null;
+  let canAdvance = false;
+
+  joinBtn.addEventListener('click', () => {
+    const name = nameInput.value.trim();
+    const code = codeInput.value.trim().toUpperCase();
+    if (!name || !code) {
+      joinError.textContent = 'Enter your name and the room code.';
+      return;
+    }
+    socket.emit('player:join', { name, code }, (res) => {
+      if (!res.ok) {
+        joinError.textContent = res.error;
+        return;
+      }
+      isLeader = res.isLeader;
+      setRoundsRadios(res.turnsPerPlayer);
+      joinView.classList.add('hidden');
+      lobbyWaitView.classList.remove('hidden');
+      updateLeaderControls();
+    });
+  });
+
+  socket.on('room:you-are-leader', ({ turnsPerPlayer } = {}) => {
+    isLeader = true;
+    setRoundsRadios(turnsPerPlayer);
+    updateLeaderControls();
+  });
+
+  function setRoundsRadios(turnsPerPlayer) {
+    const value = String(turnsPerPlayer || 2);
+    document.querySelectorAll('input[name="rounds-lobby"]').forEach(r => { r.checked = r.value === value; });
+    document.querySelectorAll('input[name="rounds-again"]').forEach(r => { r.checked = r.value === value; });
+  }
+
+  function updateLeaderControls() {
+    leaderStartControls.classList.toggle('hidden', !isLeader);
+    leaderAgainControls.classList.toggle('hidden', !isLeader);
+    waitingAgainText.classList.toggle('hidden', isLeader);
+    lobbyWaitText.textContent = isLeader
+      ? "You're in! As the first player, you can start the game once everyone's joined."
+      : "You're in! Waiting for the game to start…";
+  }
+
+  // Broadcast every change live so the host screen can display it (host has no editable control of its own).
+  // Also listen for the confirmed value back — this keeps the OTHER radio group (start-game vs.
+  // play-again are separate groups) in sync too, so this player's own screen never shows a stale
+  // "2" in one group after they picked "3" in the other.
+  document.querySelectorAll('input[name="rounds-lobby"], input[name="rounds-again"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      socket.emit('leader:update-rounds', { turnsPerPlayer: Number(radio.value) });
+    });
+  });
+
+  socket.on('room:rounds-selected', ({ turnsPerPlayer }) => {
+    setRoundsRadios(turnsPerPlayer);
+  });
+
+  playerStartBtn.addEventListener('click', () => {
+    playerStartError.textContent = '';
+    socket.emit('start-game');
+  });
+
+  playAgainBtn.addEventListener('click', () => {
+    playAgainError.textContent = '';
+    socket.emit('play-again');
+  });
+
+  socket.on('room:start-game-error', ({ error }) => {
+    playerStartError.textContent = error;
+    playAgainError.textContent = error;
+  });
+
+  // ---- Pick mode toggle ----
+  modeButtons.forEach(btn => btn.addEventListener('click', () => setPickMode(btn.dataset.mode)));
+
+  function setPickMode(mode) {
+    pickMode = mode;
+    modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    youtubeModePanel.classList.toggle('hidden', mode !== 'youtube');
+    itunesModePanel.classList.toggle('hidden', mode !== 'itunes');
+  }
+
+  // ---- Submitted-pick confirmation screen ----
+  function showSubmittedView() {
+    pickerPanel.classList.add('hidden');
+    pickSubmittedView.classList.remove('hidden');
+  }
+  pickBackBtn.addEventListener('click', () => {
+    pickSubmittedView.classList.add('hidden');
+    pickerPanel.classList.remove('hidden');
+  });
+
+  // ---- Round lifecycle ----
+  socket.on('room:your-role', ({ isJudge: judgeFlag }) => {
+    isJudge = judgeFlag;
+    updatePanelVisibility();
+  });
+
+  socket.on('room:round-started', (info) => {
+    roundInfo = info;
+    currentPhase = 'picking';
+    selectedYoutubeVideo = null;
+
+    lobbyWaitView.classList.add('hidden');
+    gameoverView.classList.add('hidden');
+    gameView.classList.remove('hidden');
+
+    roundLabelEl.textContent = `Round ${info.roundNumber} of ${info.totalRounds}`;
+    promptTextEl.textContent = info.prompt;
+
+    resetPickerForNewPrompt();
+
+    // reset judge panel
+    judgeStatusEl.textContent = 'Waiting for other players to pick…';
+    judgeRevealBtn.disabled = true;
+    judgePrereveal.classList.remove('hidden');
+    judgeRevealed.classList.add('hidden');
+    judgeSequentialView.classList.remove('hidden');
+    judgeChoosingView.classList.add('hidden');
+    judgeRevealList.innerHTML = '';
+    judgeNextBtn.classList.add('hidden');
+
+    updatePanelVisibility();
+  });
+
+  // Judge requests a fresh random prompt without starting a whole new round.
+  // Everyone's in-progress pick is cleared server-side, so the picker UI resets here too.
+  judgeNewPromptBtn.addEventListener('click', () => {
+    socket.emit('judge:new-prompt');
+  });
+
+  socket.on('room:prompt-changed', ({ prompt }) => {
+    promptTextEl.textContent = prompt;
+    if (isJudge) {
+      judgeStatusEl.textContent = 'Waiting for other players to pick…';
+      judgeRevealBtn.disabled = true;
+    } else {
+      resetPickerForNewPrompt();
+    }
+  });
+
+  function resetPickerForNewPrompt() {
+    setPickMode('youtube');
+    pickSubmittedView.classList.add('hidden');
+    pickerPanel.classList.remove('hidden');
+
+    // reset iTunes mode
+    resultsEl.innerHTML = '';
+    statusEl.textContent = '';
+    searchInput.value = '';
+    previewAudio.pause();
+    currentPlayingPreviewId = null;
+
+    // reset YouTube mode
+    resetYoutubePicker();
+  }
+
+  function resetYoutubePicker() {
+    ytResultsEl.innerHTML = '';
+    ytSearchInput.value = '';
+    ytStartPicker.classList.add('hidden');
+    ytStartTimeInput.value = '0:00';
+    selectedYoutubeVideo = null;
+    if (ytPreviewReady) ytPreviewPlayer.stopVideo();
+  }
+
+  socket.on('room:players-updated', (players) => {
+    if (isJudge && currentPhase === 'picking') {
+      const nonJudge = players.filter(p => !p.isJudge);
+      const pickedCount = nonJudge.filter(p => p.hasPicked).length;
+      judgeStatusEl.textContent = nonJudge.length
+        ? `${pickedCount}/${nonJudge.length} players have picked…`
+        : 'Waiting for players…';
+    }
+  });
+
+  socket.on('room:all-picked', () => {
+    judgeStatusEl.textContent = 'Everyone has picked! Ready to reveal.';
+    judgeRevealBtn.disabled = false;
+  });
+
+  function updatePanelVisibility() {
+    if (!roundInfo) return;
+    judgeBannerEl.textContent = isJudge
+      ? "👑 You're the judge this round!"
+      : `👑 ${roundInfo.judgeName} is judging this round`;
+
+    const showPickingUI = !isJudge && currentPhase === 'picking';
+    // pickerPanel / pickSubmittedView are mutually exclusive sub-states of showPickingUI,
+    // managed directly by showSubmittedView()/pickBackBtn once picking is active — but this
+    // toggle must be symmetric (show AND hide) so a former judge correctly regains the picker.
+    if (showPickingUI) {
+      pickerPanel.classList.remove('hidden');
+    } else {
+      pickerPanel.classList.add('hidden');
+      pickSubmittedView.classList.add('hidden');
+    }
+    judgePanel.classList.toggle('hidden', !isJudge);
+    viewerRevealPanel.classList.toggle('hidden', isJudge || currentPhase !== 'reveal');
+  }
+
+  // ---- iTunes mode: search + pick (standard preview, whatever moment iTunes chose) ----
+  searchForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const q = searchInput.value.trim();
+    if (!q) return;
+    statusEl.textContent = 'Searching…';
+    resultsEl.innerHTML = '';
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Search failed');
+      renderResults(data.results);
+      statusEl.textContent = data.results.length ? `${data.results.length} results` : 'No results.';
+    } catch (err) {
+      statusEl.textContent = 'Error: ' + err.message;
+    }
+  });
+
+  function renderResults(tracks) {
+    resultsEl.innerHTML = '';
+    tracks.forEach(track => {
+      const row = document.createElement('div');
+      row.className = 'track';
+      row.dataset.id = track.id;
+      row.innerHTML = `
+        <img src="${track.cover}" alt="" />
+        <div class="meta">
+          <div class="title">${escapeHtml(track.title)}</div>
+          <div class="artist">${escapeHtml(track.artist)}</div>
+        </div>
+        <div class="track-actions">
+          <button class="play-btn" data-id="${track.id}">▶</button>
+          <button class="pick-btn" data-id="${track.id}">Pick</button>
+        </div>
+      `;
+      resultsEl.appendChild(row);
+      row.querySelector('.play-btn').addEventListener('click', () => togglePreview(track));
+      row.querySelector('.pick-btn').addEventListener('click', () => pickItunesTrack(track));
+    });
+  }
+
+  function togglePreview(track) {
+    if (!track.previewUrl) return;
+    if (currentPlayingPreviewId === track.id) {
+      previewAudio.pause(); previewAudio.currentTime = 0; currentPlayingPreviewId = null;
+    } else {
+      previewAudio.src = track.previewUrl; previewAudio.play(); currentPlayingPreviewId = track.id;
+    }
+    updatePreviewButtons();
+  }
+  previewAudio.addEventListener('ended', () => { currentPlayingPreviewId = null; updatePreviewButtons(); });
+  function updatePreviewButtons() {
+    document.querySelectorAll('#results .play-btn').forEach(btn => {
+      const isPlaying = btn.dataset.id == currentPlayingPreviewId;
+      btn.classList.toggle('playing', isPlaying);
+      btn.textContent = isPlaying ? '■' : '▶';
+    });
+  }
+
+  function pickItunesTrack(track) {
+    previewAudio.pause();
+    socket.emit('player:submit-pick', { ...track }); // no youtube field — plays the standard iTunes clip
+    showSubmittedView();
+  }
+
+  // ---- YouTube mode: search, pick a video, choose an exact start point (default) ----
+  ytSearchForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const q = ytSearchInput.value.trim();
+    if (!q) return;
+    ytResultsEl.innerHTML = 'Searching…';
+    try {
+      const res = await fetch(`/api/youtube-search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Search failed');
+      renderYoutubeResults(data.results);
+    } catch (err) {
+      ytResultsEl.innerHTML = `<div class="status">Error: ${escapeHtml(err.message)}</div>`;
+    }
+  });
+
+  function renderYoutubeResults(videos) {
+    ytResultsEl.innerHTML = '';
+    if (!videos.length) {
+      ytResultsEl.innerHTML = '<div class="status">No results.</div>';
+      return;
+    }
+    videos.forEach(video => {
+      const row = document.createElement('div');
+      row.className = 'yt-result';
+      row.dataset.videoId = video.videoId;
+      row.innerHTML = `
+        <img src="${video.thumbnail}" alt="" />
+        <div class="meta">
+          <div class="title">${escapeHtml(video.title)}</div>
+          <div class="artist">${escapeHtml(video.channel)}</div>
+        </div>
+        <button class="yt-select-btn">Select</button>
+      `;
+      row.querySelector('.yt-select-btn').addEventListener('click', () => selectYoutubeVideo(video, row));
+      ytResultsEl.appendChild(row);
+    });
+  }
+
+  function selectYoutubeVideo(video, row) {
+    selectedYoutubeVideo = video;
+
+    // Highlight the chosen result and hide every other option from this search
+    document.querySelectorAll('#yt-results .yt-result').forEach(r => {
+      if (r === row) {
+        r.classList.remove('hidden-by-selection');
+        r.querySelector('.yt-select-btn').textContent = '✓ Selected';
+        r.querySelector('.yt-select-btn').classList.add('selected');
+      } else {
+        r.classList.add('hidden-by-selection');
+      }
+    });
+
+    ytStartPicker.classList.remove('hidden');
+    ytStartTimeInput.value = '0:00';
+    if (ytPreviewReady) {
+      ytPreviewPlayer.cueVideoById({ videoId: video.videoId, startSeconds: 0 });
+    }
+  }
+
+  ytPreviewBtn.addEventListener('click', () => {
+    if (!selectedYoutubeVideo || !ytPreviewReady) return;
+    const startSeconds = parseTimeToSeconds(ytStartTimeInput.value);
+    ytPreviewPlayer.loadVideoById({ videoId: selectedYoutubeVideo.videoId, startSeconds });
+  });
+
+  ytBackBtn.addEventListener('click', () => {
+    // Un-hide every result and reset the "Selected" button back to normal
+    document.querySelectorAll('#yt-results .yt-result').forEach(r => {
+      r.classList.remove('hidden-by-selection');
+      const btn = r.querySelector('.yt-select-btn');
+      btn.textContent = 'Select';
+      btn.classList.remove('selected');
+    });
+    ytStartPicker.classList.add('hidden');
+    selectedYoutubeVideo = null;
+    if (ytPreviewReady) ytPreviewPlayer.stopVideo();
+  });
+
+  ytUseClipBtn.addEventListener('click', () => {
+    if (!selectedYoutubeVideo) return;
+    const startSeconds = parseTimeToSeconds(ytStartTimeInput.value);
+    const finalTrack = {
+      id: 'yt-' + selectedYoutubeVideo.videoId,
+      title: selectedYoutubeVideo.title,
+      artist: selectedYoutubeVideo.channel,
+      cover: selectedYoutubeVideo.thumbnail,
+      previewUrl: null,
+      youtube: { videoId: selectedYoutubeVideo.videoId, startSeconds }
+    };
+    if (ytPreviewReady) ytPreviewPlayer.pauseVideo();
+    socket.emit('player:submit-pick', finalTrack);
+    showSubmittedView();
+  });
+
+  // ---- Reveal: sequential walkthrough (both judge and viewer), then the judge chooses ----
+  socket.on('room:reveal', ({ picks, revealIndex, subPhase }) => {
+    currentPhase = 'reveal';
+    nowPlayingIndex = null;
+    revealPicks = picks;
+    revealSubPhase = subPhase;
+    currentRevealIndex = revealIndex;
+    pickSubmittedView.classList.add('hidden'); // safety: don't leave this stuck open into reveal
+    updatePanelVisibility();
+
+    if (isJudge) {
+      judgePrereveal.classList.add('hidden');
+      judgeRevealed.classList.remove('hidden');
+      judgeSequentialView.classList.remove('hidden');
+      judgeChoosingView.classList.add('hidden');
+      judgeNextBtn.classList.add('hidden');
+      showJudgeSequentialCard();
+    } else {
+      viewerSequentialView.classList.remove('hidden');
+      viewerRevealList.classList.add('hidden');
+      showViewerSequentialCard();
+    }
+  });
+
+  function showJudgeSequentialCard() {
+    const entry = revealPicks[currentRevealIndex];
+    if (!entry) return;
+    canAdvance = false;
+    judgeSeqCoverCard.classList.remove('hidden');
+    judgeSeqProgress.textContent = `Song ${currentRevealIndex + 1} of ${revealPicks.length}`;
+    judgeSeqCover.src = entry.track.cover;
+    judgeSeqCover.classList.toggle('cover-wide', !!entry.track.youtube);
+    judgeSeqTitle.innerHTML = escapeHtml(entry.track.title);
+    judgeSeqArtist.textContent = entry.track.artist;
+    judgeSeqPlayBtn.textContent = '▶ Play';
+    judgeSeqNextBtn.classList.add('hidden');
+    judgeSeqNextBtn.textContent = currentRevealIndex + 1 >= revealPicks.length ? 'Finish listening →' : 'Next →';
+  }
+
+  function showViewerSequentialCard() {
+    const entry = revealPicks[currentRevealIndex];
+    if (!entry) return;
+    viewerSeqProgress.textContent = `Song ${currentRevealIndex + 1} of ${revealPicks.length}`;
+    viewerSeqCover.src = entry.track.cover;
+    viewerSeqCover.classList.toggle('cover-wide', !!entry.track.youtube);
+    viewerSeqTitle.innerHTML = escapeHtml(entry.track.title);
+    viewerSeqArtist.textContent = entry.track.artist;
+  }
+
+  socket.on('room:reveal-advanced', ({ revealIndex }) => {
+    currentRevealIndex = revealIndex;
+    nowPlayingIndex = null;
+    if (isJudge) showJudgeSequentialCard();
+    else showViewerSequentialCard();
+  });
+
+  socket.on('room:reveal-choosing', () => {
+    revealSubPhase = 'choosing';
+    if (isJudge) {
+      judgeSequentialView.classList.add('hidden');
+      judgeChoosingView.classList.remove('hidden');
+      renderJudgeChoosingList();
+    } else {
+      viewerSequentialView.classList.add('hidden');
+      viewerRevealList.classList.remove('hidden');
+      renderViewerChoosingList();
+    }
+  });
+
+  function renderJudgeChoosingList() {
+    judgeRevealList.innerHTML = '';
+    revealPicks.forEach((entry, i) => {
+      const row = document.createElement('div');
+      row.className = 'reveal-card';
+      row.dataset.index = i;
+      row.innerHTML = `
+        <img src="${entry.track.cover}" alt="" class="${entry.track.youtube ? 'cover-wide' : ''}" />
+        <div class="meta">
+          <div class="title">${escapeHtml(entry.track.title)}</div>
+          <div class="artist">${escapeHtml(entry.track.artist)}</div>
+          <div class="by hidden">Picked by ${escapeHtml(entry.playerName)}</div>
+        </div>
+        <div class="reveal-actions">
+          <button class="play-btn" data-index="${i}">▶</button>
+          <button class="winner-btn" data-index="${i}">🏆 Winner</button>
+        </div>
+      `;
+      row.querySelector('.play-btn').addEventListener('click', () => togglePlayback(i));
+      row.querySelector('.winner-btn').addEventListener('click', () => chooseWinner(i));
+      judgeRevealList.appendChild(row);
+    });
+  }
+
+  function renderViewerChoosingList() {
+    viewerRevealList.innerHTML = '';
+    revealPicks.forEach((entry, i) => {
+      const card = document.createElement('div');
+      card.className = 'reveal-card';
+      card.dataset.index = i;
+      card.innerHTML = `
+        <img src="${entry.track.cover}" alt="" class="${entry.track.youtube ? 'cover-wide' : ''}" />
+        <div class="meta">
+          <div class="title">${escapeHtml(entry.track.title)}</div>
+          <div class="artist">${escapeHtml(entry.track.artist)}</div>
+          <div class="by hidden">Picked by ${escapeHtml(entry.playerName)}</div>
+        </div>
+      `;
+      viewerRevealList.appendChild(card);
+    });
+  }
+
+  // ---- Judge sequential controls ----
+  judgeSeqPlayBtn.addEventListener('click', () => {
+    if (nowPlayingIndex === currentRevealIndex) {
+      socket.emit('judge:stop-playback');
+    } else {
+      socket.emit('judge:play-pick', currentRevealIndex);
+    }
+  });
+
+  judgeSeqNextBtn.addEventListener('click', () => {
+    if (judgeSeqNextBtn.classList.contains('hidden')) return;
+    socket.emit('judge:next-pick');
+  });
+
+  judgeRevealBtn.addEventListener('click', () => {
+    if (judgeRevealBtn.disabled) return;
+    socket.emit('judge:start-reveal');
+  });
+
+  function togglePlayback(i) {
+    if (nowPlayingIndex === i) {
+      socket.emit('judge:stop-playback');
+    } else {
+      socket.emit('judge:play-pick', i);
+    }
+  }
+
+  socket.on('room:now-playing', ({ index }) => {
+    nowPlayingIndex = index;
+    updatePlaybackUI();
+  });
+
+  // Fires ~3 seconds after the judge presses play on the current pick — or immediately
+  // if the clip happens to finish entirely before that.
+  socket.on('room:can-advance', () => {
+    canAdvance = true;
+    judgeSeqNextBtn.classList.remove('hidden');
+  });
+
+  socket.on('room:stop-playback', () => {
+    nowPlayingIndex = null;
+    updatePlaybackUI();
+  });
+
+  function updatePlaybackUI() {
+    // Sequential step: judge's Play/Stop label
+    if (revealSubPhase === 'sequential') {
+      const isPlaying = nowPlayingIndex === currentRevealIndex;
+      judgeSeqPlayBtn.textContent = isPlaying ? '■ Stop' : '▶ Play';
+    }
+
+    // Choosing-list play buttons (judge only — viewer's list has none)
+    document.querySelectorAll('.reveal-card').forEach(c => c.classList.remove('now-playing'));
+    if (nowPlayingIndex !== null) {
+      const playingCard = document.querySelector(`.reveal-card[data-index="${nowPlayingIndex}"]`);
+      if (playingCard) playingCard.classList.add('now-playing');
+    }
+    document.querySelectorAll('#judge-reveal-list .play-btn').forEach(btn => {
+      const idx = Number(btn.dataset.index);
+      const isPlaying = idx === nowPlayingIndex;
+      btn.textContent = isPlaying ? '■' : '▶';
+      btn.classList.toggle('playing', isPlaying);
+    });
+  }
+
+  function chooseWinner(i) {
+    socket.emit('judge:choose-winner', i);
+  }
+
+  socket.on('room:winner-chosen', ({ index }) => {
+    document.querySelectorAll('.reveal-card').forEach(c => c.classList.remove('winner'));
+    const judgeCard = judgeRevealList.querySelector(`.reveal-card[data-index="${index}"]`);
+    if (judgeCard) judgeCard.classList.add('winner');
+    const viewerCard = viewerRevealList.querySelector(`.reveal-card[data-index="${index}"]`);
+    if (viewerCard) viewerCard.classList.add('winner');
+
+    // Reveal who picked what for every song now that judging is done
+    judgeRevealList.querySelectorAll('.by').forEach(el => el.classList.remove('hidden'));
+    viewerRevealList.querySelectorAll('.by').forEach(el => el.classList.remove('hidden'));
+
+    document.querySelectorAll('#judge-reveal-list .winner-btn').forEach(b => b.disabled = true);
+    judgeNextBtn.classList.remove('hidden');
+    judgeNextBtn.textContent = roundInfo && roundInfo.roundNumber >= roundInfo.totalRounds
+      ? 'See final results →'
+      : 'Next round →';
+  });
+
+  judgeNextBtn.addEventListener('click', () => {
+    socket.emit('judge:next-round');
+  });
+
+  socket.on('room:game-over', ({ scoreboard, turnsPerPlayer }) => {
+    gameView.classList.add('hidden');
+    lobbyWaitView.classList.add('hidden');
+    gameoverView.classList.remove('hidden');
+    setRoundsRadios(turnsPerPlayer);
+    finalScoreboardEl.innerHTML = '';
+    scoreboard.forEach((p, i) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      const row = document.createElement('div');
+      row.className = 'score-row';
+      row.innerHTML = `<span>${medal} ${escapeHtml(p.name)}</span><span>${p.score} pts</span>`;
+      finalScoreboardEl.appendChild(row);
+    });
+    updateLeaderControls();
+  });
+
+  socket.on('room:host-left', () => {
+    alert('The host ended the game.');
+  });
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+</script>
+</body>
+</html>
