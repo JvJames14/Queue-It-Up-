@@ -36,11 +36,24 @@
     display: flex; flex-direction: column; align-items: center;
     padding: 1.5cqh 2.5cqw;
   }
-  /* Pinned to the top always — doesn't move or resize as the content below it changes */
+  /* Pinned to the top always — doesn't move or resize as the content below it changes.
+     Room code and QR code flank the title so a disconnected player can always find them,
+     on every screen, not just the lobby. */
   .header-row {
-    flex-shrink: 0; text-align: center; margin-top: 2.8cqh;
-    transition: margin-top 0.2s ease, font-size 0.2s ease;
+    flex-shrink: 0; margin-top: 2.8cqh;
+    display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 2cqw;
+    transition: margin-top 0.2s ease;
   }
+  .header-side { flex-shrink: 0; width: 15cqw; min-width: 105px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .header-center { flex: 1; text-align: center; }
+  .mini-code-label { font-size: 0.9cqmin; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 600; }
+  .mini-code { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 3.8cqmin; letter-spacing: 0.1em; color: var(--gold); }
+  #qrcode { background: #fff; padding: 4px; border-radius: 0.6cqmin; line-height: 0; }
+  #qrcode img, #qrcode canvas { width: 102px !important; height: 102px !important; }
+  .qr-unavailable { font-size: 0.7cqmin; color: var(--muted); }
+  /* The lobby has its own big, dedicated room code + QR display below — hide the header's
+     copy there so it isn't shown twice; every other screen shows the header version. */
+  .tv-frame:has(#lobby-view:not(.hidden)) .header-side { display: none; }
   /* On the video page specifically, shrink the header and drop the extra top
      margin so the video and song info underneath have room to fully show. */
   .tv-frame.video-focus .header-row { margin-top: 0.4cqh; }
@@ -69,6 +82,8 @@
     -webkit-background-clip: text; background-clip: text; color: transparent;
     filter: drop-shadow(0 0 1.8cqmin rgba(255, 61, 154, 0.35));
   }
+  .round-header { font-family: 'Fredoka', sans-serif; font-size: 2.7cqmin; font-weight: 600; color: var(--muted); margin-top: 20px; margin-bottom: 0.9cqh; }
+  .lobby-top-row { display: flex; align-items: center; justify-content: center; gap: 5cqw; flex-wrap: wrap; }
   .code-box {
     background: linear-gradient(135deg, var(--accent-2), var(--accent));
     border-radius: 2cqmin; padding: 2.8cqh 4.5cqw; margin: 2.2cqh 0;
@@ -80,10 +95,8 @@
     letter-spacing: 0.18em; margin-top: 0.6cqh; text-shadow: 0 0.3cqmin 0 rgba(0,0,0,0.15);
   }
   .code-box .hint { font-size: 1.6cqmin; opacity: 0.95; margin-top: 1cqh; }
-  .lobby-top-row { display: flex; align-items: center; justify-content: center; gap: 5cqw; flex-wrap: wrap; }
-  .qr-section #qrcode { display: inline-block; padding: 10px; background: #fff; border-radius: 1.2cqmin; line-height: 0; }
-  .qr-unavailable { font-size: 1.1cqmin; color: var(--muted); max-width: 60cqw; margin: 1.2cqh auto; }
-  .round-header { font-family: 'Fredoka', sans-serif; font-size: 2.7cqmin; font-weight: 600; color: var(--muted); margin-top: 20px; margin-bottom: 0.9cqh; }
+  .lobby-qr-section #qrcode-lobby { display: inline-block; padding: 10px; background: #fff; border-radius: 1.2cqmin; line-height: 0; }
+  .lobby-qr-unavailable { font-size: 1.1cqmin; color: var(--muted); max-width: 60cqw; margin: 1.2cqh auto; }
   .judge-banner {
     background: rgba(255, 217, 74, 0.14); border: 2px solid var(--gold); color: var(--gold);
     border-radius: 999px; display: inline-block; padding: 1.2cqh 3cqw; font-size: 2cqmin; font-weight: 700; margin-bottom: 1.8cqh;
@@ -101,6 +114,7 @@
   .player-chip .dot { width: 1cqmin; height: 1cqmin; border-radius: 50%; background: #5a5382; }
   .player-chip.picked .dot { background: #4ade80; box-shadow: 0 0 0.9cqmin #4ade80; }
   .player-chip.judge { border-color: var(--gold); box-shadow: 0 0 1.5cqmin rgba(255,217,74,0.3); }
+  .player-chip.disconnected { opacity: 0.5; font-style: italic; }
   button {
     border: none; border-radius: 1.5cqmin; padding: 1.9cqh 3cqw; font-weight: 700;
     font-size: 2.05cqmin; cursor: pointer; margin: 0.7cqmin;
@@ -195,28 +209,41 @@
 <body>
 <div class="tv-frame">
 <div class="header-row">
-  <div class="logo-mark">🎧</div>
-  <h1>Queue It Up!</h1>
+  <div class="header-side">
+    <div class="mini-code-label">Room Code</div>
+    <div class="mini-code" id="room-code">····</div>
+  </div>
+  <div class="header-center">
+    <div class="logo-mark">🎧</div>
+    <h1>Queue It Up!</h1>
+  </div>
+  <div class="header-side">
+    <div id="qrcode"></div>
+    <div class="qr-unavailable hidden" id="qr-unavailable">No QR — use the code</div>
+  </div>
 </div>
 <div class="wrap">
   <div id="lobby-view">
     <div class="lobby-top-row">
       <div class="code-box">
         <div class="label">Room code</div>
-        <div class="code" id="room-code">····</div>
+        <div class="code" id="room-code-lobby">····</div>
         <div class="hint">Players: open the game on your phone and enter this code</div>
       </div>
-      <div id="qr-section" class="qr-section hidden">
-        <div id="qrcode"></div>
+      <div class="lobby-qr-section" id="lobby-qr-section">
+        <div id="qrcode-lobby"></div>
       </div>
     </div>
-    <div id="qr-unavailable" class="qr-unavailable hidden">
+    <div class="lobby-qr-unavailable hidden" id="lobby-qr-unavailable">
       Couldn't detect this computer's network address for a QR code — players can still join by typing the room code above at your game's URL.
     </div>
     <div class="players" id="lobby-players-list"></div>
 
     <div class="rounds-picker">
-      <span>Turns per player:</span> <strong id="rounds-display-lobby">2</strong>
+      <span>Turns per player:</span>
+      <label><input type="radio" name="rounds-lobby" value="1"> 1</label>
+      <label><input type="radio" name="rounds-lobby" value="2" checked> 2</label>
+      <label><input type="radio" name="rounds-lobby" value="3"> 3</label>
     </div>
     <button class="primary" id="start-game-btn" disabled>Start game</button>
     <div class="error-text" id="lobby-error"></div>
@@ -255,7 +282,10 @@
     <div id="final-scoreboard"></div>
 
     <div class="rounds-picker">
-      <span>Turns per player:</span> <strong id="rounds-display-again">2</strong>
+      <span>Turns per player:</span>
+      <label><input type="radio" name="rounds-again" value="1"> 1</label>
+      <label><input type="radio" name="rounds-again" value="2" checked> 2</label>
+      <label><input type="radio" name="rounds-again" value="3"> 3</label>
     </div>
     <button class="primary" id="play-again-btn">Play again?</button>
     <div class="error-text" id="gameover-error"></div>
@@ -391,6 +421,7 @@
   const ytVideoWrap = document.getElementById('yt-video-wrap');
 
   const roomCodeEl = document.getElementById('room-code');
+  const roomCodeLobbyEl = document.getElementById('room-code-lobby');
   const lobbyPlayersListEl = document.getElementById('lobby-players-list');
   const startGameBtn = document.getElementById('start-game-btn');
   const lobbyErrorEl = document.getElementById('lobby-error');
@@ -426,11 +457,18 @@
   socket.emit('host:create-room', {}, (res) => {
     if (!res.ok) return;
     roomCodeEl.textContent = res.code;
+    roomCodeLobbyEl.textContent = res.code;
 
     if (res.joinBaseUrl) {
       const joinUrl = `${res.joinBaseUrl}/?code=${res.code}`;
-      document.getElementById('qr-section').classList.remove('hidden');
       new QRCode(document.getElementById('qrcode'), {
+        text: joinUrl,
+        width: 102,
+        height: 102,
+        colorDark: '#14121f',
+        colorLight: '#ffffff'
+      });
+      new QRCode(document.getElementById('qrcode-lobby'), {
         text: joinUrl,
         width: 180,
         height: 180,
@@ -438,30 +476,29 @@
         colorLight: '#ffffff'
       });
     } else {
+      document.getElementById('qrcode').classList.add('hidden');
       document.getElementById('qr-unavailable').classList.remove('hidden');
+      document.getElementById('lobby-qr-section').classList.add('hidden');
+      document.getElementById('lobby-qr-unavailable').classList.remove('hidden');
     }
   });
 
   startGameBtn.addEventListener('click', () => {
     getAudioCtx();
-    socket.emit('start-game');
+    const turns = document.querySelector('input[name="rounds-lobby"]:checked').value;
+    socket.emit('start-game', { turnsPerPlayer: Number(turns) });
   });
 
   playAgainBtn.addEventListener('click', () => {
     getAudioCtx();
     gameoverErrorEl.textContent = '';
-    socket.emit('play-again');
+    const turns = document.querySelector('input[name="rounds-again"]:checked').value;
+    socket.emit('play-again', { turnsPerPlayer: Number(turns) });
   });
 
   socket.on('room:start-game-error', ({ error }) => {
     lobbyErrorEl.textContent = error;
     gameoverErrorEl.textContent = error;
-  });
-
-  // The leader's phone is the only place this is actually chosen — this screen just displays it live.
-  socket.on('room:rounds-selected', ({ turnsPerPlayer }) => {
-    document.getElementById('rounds-display-lobby').textContent = turnsPerPlayer;
-    document.getElementById('rounds-display-again').textContent = turnsPerPlayer;
   });
 
   function renderPlayerChips(container, players, showScore) {
@@ -472,8 +509,8 @@
     }
     players.forEach(p => {
       const chip = document.createElement('div');
-      chip.className = 'player-chip' + (p.hasPicked ? ' picked' : '') + (p.isJudge ? ' judge' : '');
-      const label = (p.isJudge ? '👑 ' : '') + escapeHtml(p.name) + (showScore ? ` · ${p.score} pts` : '');
+      chip.className = 'player-chip' + (p.hasPicked ? ' picked' : '') + (p.isJudge ? ' judge' : '') + (p.connected === false ? ' disconnected' : '');
+      const label = (p.isJudge ? '👑 ' : '') + escapeHtml(p.name) + (showScore ? ` · ${p.score} pts` : '') + (p.connected === false ? ' (reconnecting…)' : '');
       chip.innerHTML = `<span class="dot"></span> ${label}`;
       container.appendChild(chip);
     });
@@ -676,13 +713,11 @@
     sfx.winnerChosen();
   });
 
-  socket.on('room:game-over', ({ scoreboard, turnsPerPlayer }) => {
+  socket.on('room:game-over', ({ scoreboard }) => {
     exitSequentialFocus();
     gameView.classList.add('hidden');
     gameoverView.classList.remove('hidden');
     gameoverErrorEl.textContent = '';
-    document.getElementById('rounds-display-lobby').textContent = turnsPerPlayer;
-    document.getElementById('rounds-display-again').textContent = turnsPerPlayer;
     finalScoreboardEl.innerHTML = '';
     scoreboard.forEach((p, i) => {
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;

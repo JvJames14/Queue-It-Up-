@@ -159,18 +159,7 @@
   </div>
 
   <div id="lobby-wait-view" class="hidden card" style="text-align:center;">
-    <p id="lobby-wait-text">You're in! Waiting for the game to start…</p>
-
-    <div id="leader-start-controls" class="hidden">
-      <div class="rounds-picker">
-        <span>Turns per player:</span>
-        <label><input type="radio" name="rounds-lobby" value="1"> 1</label>
-        <label><input type="radio" name="rounds-lobby" value="2" checked> 2</label>
-        <label><input type="radio" name="rounds-lobby" value="3"> 3</label>
-      </div>
-      <button class="primary" id="player-start-btn">Start game</button>
-      <div class="error" id="player-start-error"></div>
-    </div>
+    <p>You're in! Waiting for the game to start…</p>
   </div>
 
   <div id="game-view" class="hidden">
@@ -201,9 +190,9 @@
           <div class="time-row">
             <label for="yt-start-time">Start at (mm:ss):</label>
             <input type="text" id="yt-start-time" placeholder="0:00" value="0:00" />
-            <button class="secondary" id="yt-preview-btn" style="width:auto;">▶ Preview</button>
           </div>
           <button class="secondary" id="yt-back-btn">← Back</button>
+          <button class="secondary" id="yt-preview-btn" style="margin-bottom:10px;">▶ Preview</button>
           <button class="primary" id="yt-use-clip-btn">Pick this clip</button>
         </div>
       </div>
@@ -245,7 +234,7 @@
       <div id="judge-prereveal">
         <div class="status" id="judge-status">Waiting for other players to pick…</div>
         <button class="primary" id="judge-reveal-btn" disabled>Reveal picks</button>
-        <button class="secondary" id="judge-new-prompt-btn" style="margin-top:10px;">🔀 New prompt</button>
+        <button class="secondary" id="judge-new-prompt-btn" style="margin-top:10px;">↻ New prompt</button>
       </div>
 
       <div id="judge-revealed" class="hidden">
@@ -267,7 +256,7 @@
           <div class="reveal-list" id="judge-reveal-list"></div>
         </div>
 
-        <button class="secondary hidden" id="judge-next-btn" style="margin-top:14px;">Next round →</button>
+        <button class="primary hidden" id="judge-next-btn" style="margin-top:14px;">Next round →</button>
       </div>
     </div>
   </div>
@@ -275,18 +264,7 @@
   <div id="gameover-view" class="hidden card">
     <h2 style="text-align:center; font-family:'Fredoka',sans-serif;">🏆 Final Scores</h2>
     <div id="final-scoreboard"></div>
-
-    <div id="leader-again-controls" class="hidden">
-      <div class="rounds-picker">
-        <span>Turns per player:</span>
-        <label><input type="radio" name="rounds-again" value="1"> 1</label>
-        <label><input type="radio" name="rounds-again" value="2" checked> 2</label>
-        <label><input type="radio" name="rounds-again" value="3"> 3</label>
-      </div>
-      <button class="primary" id="play-again-btn">Play again?</button>
-      <div class="error" id="play-again-error"></div>
-    </div>
-    <p id="waiting-again-text" class="waiting-text hidden">Waiting for the room leader to start a new game…</p>
+    <p class="waiting-text">Waiting for the host to start a new game…</p>
   </div>
 </div>
 
@@ -321,10 +299,6 @@
   // ---- Join flow ----
   const joinView = document.getElementById('join-view');
   const lobbyWaitView = document.getElementById('lobby-wait-view');
-  const lobbyWaitText = document.getElementById('lobby-wait-text');
-  const leaderStartControls = document.getElementById('leader-start-controls');
-  const playerStartBtn = document.getElementById('player-start-btn');
-  const playerStartError = document.getElementById('player-start-error');
 
   const gameView = document.getElementById('game-view');
   const gameoverView = document.getElementById('gameover-view');
@@ -333,14 +307,10 @@
   const joinBtn = document.getElementById('join-btn');
   const joinError = document.getElementById('join-error');
 
-  // If this page was opened via the host's QR code (e.g. ?code=ABCD), pre-fill the room
-  // code so a scanning player only needs to type their name before joining.
+  // If this page was opened via the host's QR code (e.g. ?code=ABCD), remember it for the
+  // prefill logic below (combined with any previously-saved name/code for rejoining).
   const urlParams = new URLSearchParams(window.location.search);
   const codeFromUrl = urlParams.get('code');
-  if (codeFromUrl) {
-    codeInput.value = codeFromUrl.toUpperCase().slice(0, 4);
-    nameInput.focus();
-  }
 
   const roundLabelEl = document.getElementById('round-label');
   const judgeBannerEl = document.getElementById('judge-banner');
@@ -382,10 +352,6 @@
   const resultsEl = document.getElementById('results');
   const statusEl = document.getElementById('status');
   const finalScoreboardEl = document.getElementById('final-scoreboard');
-  const leaderAgainControls = document.getElementById('leader-again-controls');
-  const waitingAgainText = document.getElementById('waiting-again-text');
-  const playAgainBtn = document.getElementById('play-again-btn');
-  const playAgainError = document.getElementById('play-again-error');
 
   const modeButtons = document.querySelectorAll('.mode-btn');
   const youtubeModePanel = document.getElementById('youtube-mode-panel');
@@ -400,7 +366,6 @@
   const ytUseClipBtn = document.getElementById('yt-use-clip-btn');
 
   let isJudge = false;
-  let isLeader = false;
   let roundInfo = null;
   let currentPhase = 'lobby';
   let currentPlayingPreviewId = null;
@@ -412,6 +377,27 @@
   let currentRevealIndex = 0;
   let nowPlayingIndex = null;
   let canAdvance = false;
+
+  // Remember the name+code so a reload (e.g. after losing connection) can offer a quick rejoin.
+  const SAVED_JOIN_KEY = 'queueItUp.lastJoin';
+  function saveJoinInfo(name, code) {
+    try { localStorage.setItem(SAVED_JOIN_KEY, JSON.stringify({ name, code })); } catch (e) {}
+  }
+  function loadJoinInfo() {
+    try { return JSON.parse(localStorage.getItem(SAVED_JOIN_KEY) || 'null'); } catch (e) { return null; }
+  }
+
+  // Prefill the code from a scanned QR link if present; otherwise, offer whatever was
+  // last used on this device so reconnecting after a dropped connection is just one tap.
+  const savedJoin = loadJoinInfo();
+  if (codeFromUrl) {
+    codeInput.value = codeFromUrl.toUpperCase().slice(0, 4);
+    if (savedJoin?.name) nameInput.value = savedJoin.name;
+    nameInput.focus();
+  } else if (savedJoin) {
+    nameInput.value = savedJoin.name || '';
+    codeInput.value = savedJoin.code || '';
+  }
 
   joinBtn.addEventListener('click', () => {
     const name = nameInput.value.trim();
@@ -425,62 +411,13 @@
         joinError.textContent = res.error;
         return;
       }
-      isLeader = res.isLeader;
-      setRoundsRadios(res.turnsPerPlayer);
+      saveJoinInfo(name, code);
       joinView.classList.add('hidden');
       lobbyWaitView.classList.remove('hidden');
-      updateLeaderControls();
+      if (res.reconnected) {
+        lobbyWaitView.querySelector('p').textContent = "Welcome back! Reconnecting you to the game…";
+      }
     });
-  });
-
-  socket.on('room:you-are-leader', ({ turnsPerPlayer } = {}) => {
-    isLeader = true;
-    setRoundsRadios(turnsPerPlayer);
-    updateLeaderControls();
-  });
-
-  function setRoundsRadios(turnsPerPlayer) {
-    const value = String(turnsPerPlayer || 2);
-    document.querySelectorAll('input[name="rounds-lobby"]').forEach(r => { r.checked = r.value === value; });
-    document.querySelectorAll('input[name="rounds-again"]').forEach(r => { r.checked = r.value === value; });
-  }
-
-  function updateLeaderControls() {
-    leaderStartControls.classList.toggle('hidden', !isLeader);
-    leaderAgainControls.classList.toggle('hidden', !isLeader);
-    waitingAgainText.classList.toggle('hidden', isLeader);
-    lobbyWaitText.textContent = isLeader
-      ? "You're in! As the first player, you can start the game once everyone's joined."
-      : "You're in! Waiting for the game to start…";
-  }
-
-  // Broadcast every change live so the host screen can display it (host has no editable control of its own).
-  // Also listen for the confirmed value back — this keeps the OTHER radio group (start-game vs.
-  // play-again are separate groups) in sync too, so this player's own screen never shows a stale
-  // "2" in one group after they picked "3" in the other.
-  document.querySelectorAll('input[name="rounds-lobby"], input[name="rounds-again"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      socket.emit('leader:update-rounds', { turnsPerPlayer: Number(radio.value) });
-    });
-  });
-
-  socket.on('room:rounds-selected', ({ turnsPerPlayer }) => {
-    setRoundsRadios(turnsPerPlayer);
-  });
-
-  playerStartBtn.addEventListener('click', () => {
-    playerStartError.textContent = '';
-    socket.emit('start-game');
-  });
-
-  playAgainBtn.addEventListener('click', () => {
-    playAgainError.textContent = '';
-    socket.emit('play-again');
-  });
-
-  socket.on('room:start-game-error', ({ error }) => {
-    playerStartError.textContent = error;
-    playAgainError.textContent = error;
   });
 
   // ---- Pick mode toggle ----
@@ -590,6 +527,12 @@
   socket.on('room:all-picked', () => {
     judgeStatusEl.textContent = 'Everyone has picked! Ready to reveal.';
     judgeRevealBtn.disabled = false;
+  });
+
+  // Sent only during reconnection catch-up, when this player already submitted a pick
+  // before losing connection — shows the "submitted" screen instead of the search UI.
+  socket.on('room:already-picked', () => {
+    showSubmittedView();
   });
 
   function updatePanelVisibility() {
@@ -974,11 +917,10 @@
     socket.emit('judge:next-round');
   });
 
-  socket.on('room:game-over', ({ scoreboard, turnsPerPlayer }) => {
+  socket.on('room:game-over', ({ scoreboard }) => {
     gameView.classList.add('hidden');
     lobbyWaitView.classList.add('hidden');
     gameoverView.classList.remove('hidden');
-    setRoundsRadios(turnsPerPlayer);
     finalScoreboardEl.innerHTML = '';
     scoreboard.forEach((p, i) => {
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
@@ -987,7 +929,6 @@
       row.innerHTML = `<span>${medal} ${escapeHtml(p.name)}</span><span>${p.score} pts</span>`;
       finalScoreboardEl.appendChild(row);
     });
-    updateLeaderControls();
   });
 
   socket.on('room:host-left', () => {

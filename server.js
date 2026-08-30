@@ -160,8 +160,7 @@ const PROMPTS = [
 ];
 
 /** rooms: Map<code, {
- *   hostSocketId,                     // the TV device — spectator only
- *   leaderSocketId,                   // first player to join — can also start/restart the game
+ *   hostSocketId,                     // the TV device — the ONLY device that can start/restart the game
  *   phase: 'lobby'|'picking'|'reveal'|'game-over',
  *   prompt, promptIndex,
  *   players: Map<socketId, { name, pick, hasPicked, score }>,
@@ -209,8 +208,56 @@ function playerListPayload(room) {
     name: p.name,
     hasPicked: p.hasPicked,
     score: p.score,
-    isJudge: id === judgeId
+    isJudge: id === judgeId,
+    connected: p.connected !== false
   }));
+}
+
+// Replays the sequence of setup events a reconnecting player needs to land back in the
+// correct spot — reusing the SAME client-side handlers a fresh round already relies on,
+// rather than building a separate "resume" code path on the client.
+function sendCatchUpState(socket, room) {
+  if (room.phase === 'game-over') {
+    socket.emit('room:game-over', { scoreboard: buildScoreboard(room) });
+    return;
+  }
+  if (!room.gameStarted) return; // still in the lobby — nothing to catch up on
+
+  const judgeId = getCurrentJudgeId(room);
+  const judgePlayer = room.players.get(judgeId);
+  socket.emit('room:round-started', {
+    roundNumber: room.currentRoundNumber,
+    totalRounds: room.totalRounds,
+    prompt: room.prompt,
+    judgeName: judgePlayer?.name || 'Unknown'
+  });
+  socket.emit('room:your-role', { isJudge: socket.id === judgeId });
+
+  if (room.phase === 'picking') {
+    const me = room.players.get(socket.id);
+    if (me && socket.id !== judgeId && me.hasPicked) {
+      socket.emit('room:already-picked');
+    }
+  }
+
+  if (room.phase === 'reveal' && room.reveal) {
+    socket.emit('room:reveal', {
+      picks: room.reveal.picks.map(({ playerName, track }) => ({ playerName, track })),
+      revealIndex: room.reveal.revealIndex,
+      subPhase: room.reveal.subPhase
+    });
+    if (room.reveal.subPhase === 'choosing') {
+      socket.emit('room:reveal-choosing');
+      if (room.reveal.winnerIndex !== null) {
+        const winnerEntry = room.reveal.picks[room.reveal.winnerIndex];
+        socket.emit('room:winner-chosen', {
+          index: room.reveal.winnerIndex,
+          playerName: winnerEntry.playerName,
+          scoreboard: buildScoreboard(room)
+        });
+      }
+    }
+  }
 }
 
 function allNonJudgePicked(room) {
@@ -227,7 +274,6 @@ function buildScoreboard(room) {
 
 function emitStartError(room, error) {
   io.to(room.hostSocketId).emit('room:start-game-error', { error });
-  if (room.leaderSocketId) io.to(room.leaderSocketId).emit('room:start-game-error', { error });
 }
 
 function startRound(room, roomCode) {
@@ -258,7 +304,7 @@ function startRound(room, roomCode) {
 function advanceRoundOrEndGame(room, roomCode) {
   if (room.currentRoundNumber >= room.totalRounds) {
     room.phase = 'game-over';
-    io.to(roomCode).emit('room:game-over', { scoreboard: buildScoreboard(room), turnsPerPlayer: room.selectedTurnsPerPlayer });
+    io.to(roomCode).emit('room:game-over', { scoreboard: buildScoreboard(room) });
   } else {
     room.currentRoundNumber += 1;
     io.to(roomCode).emit('room:next-round-sound');
@@ -268,12 +314,11 @@ function advanceRoundOrEndGame(room, roomCode) {
 
 io.on('connection', (socket) => {
 
-  // ---- Host creates a room (TV / spectator device) ----
+  // ---- Host creates a room (TV device — the only device that can start/restart the game) ----
   socket.on('host:create-room', (_data, ack) => {
     const code = makeRoomCode();
     rooms.set(code, {
       hostSocketId: socket.id,
-      leaderSocketId: null,
       phase: 'lobby',
       prompt: null,
       promptIndex: null,
@@ -282,8 +327,7 @@ io.on('connection', (socket) => {
       playerOrderSnapshot: [],
       currentRoundNumber: 0,
       totalRounds: 0,
-      reveal: null,
-      selectedTurnsPerPlayer: 2 // live-synced from the leader's phone; host screen just displays it
+      reveal: null
     });
     socket.join(code);
     socket.data.roomCode = code;
@@ -291,11 +335,47 @@ io.on('connection', (socket) => {
     ack?.({ ok: true, code, joinBaseUrl: getJoinBaseUrl(socket) });
   });
 
-  // ---- Player joins a room (only while it's still in the lobby) ----
+  // ---- Player joins a room ----
   socket.on('player:join', ({ code, name }, ack) => {
     const roomCode = (code || '').trim().toUpperCase();
     const room = rooms.get(roomCode);
     if (!room) return ack?.({ ok: false, error: 'Room not found. Check the code.' });
+
+    const cleanName = (name || '').trim().slice(0, 20) || 'Player';
+
+    // Reconnection: if this name matches a player who disconnected mid-game, reclaim their
+    // existing slot (score, current pick, judge rotation position all preserved) instead of
+    // treating this as a brand-new join. This works even after the game has started — that's
+    // the whole point, since a fresh join is deliberately blocked once the game is underway.
+    const reconnectEntry = Array.from(room.players.entries())
+      .find(([, p]) => p.connected === false && p.name.toLowerCase() === cleanName.toLowerCase());
+
+    if (reconnectEntry) {
+      const [oldSocketId, playerData] = reconnectEntry;
+      room.players.delete(oldSocketId);
+      playerData.connected = true;
+      room.players.set(socket.id, playerData);
+
+      // Fix up anywhere the old (now-stale) socket id was recorded, so judge rotation and
+      // winner-scoring both keep working correctly for this player going forward.
+      if (room.playerOrderSnapshot.length) {
+        room.playerOrderSnapshot = room.playerOrderSnapshot.map(id => id === oldSocketId ? socket.id : id);
+      }
+      if (room.reveal && room.reveal.picks) {
+        room.reveal.picks.forEach(p => { if (p.playerSocketId === oldSocketId) p.playerSocketId = socket.id; });
+      }
+
+      socket.join(roomCode);
+      socket.data.roomCode = roomCode;
+      socket.data.role = 'player';
+
+      ack?.({ ok: true, reconnected: true });
+      sendCatchUpState(socket, room);
+      io.to(roomCode).emit('room:players-updated', playerListPayload(room));
+      return;
+    }
+
+    // ---- Fresh join ----
     if (room.gameStarted) {
       return ack?.({ ok: false, error: 'This game already started. Ask the host to open a new room.' });
     }
@@ -304,47 +384,30 @@ io.on('connection', (socket) => {
     if (room.players.size >= 9) {
       return ack?.({ ok: false, error: 'This room is full (9 players max).' });
     }
-    const cleanName = (name || '').trim().slice(0, 20) || 'Player';
     const nameTaken = Array.from(room.players.values())
       .some(p => p.name.toLowerCase() === cleanName.toLowerCase());
     if (nameTaken) {
       return ack?.({ ok: false, error: 'That name is already taken in this room — pick another.' });
     }
 
-    room.players.set(socket.id, { name: cleanName, pick: null, hasPicked: false, score: 0 });
-    if (!room.leaderSocketId) room.leaderSocketId = socket.id;
+    room.players.set(socket.id, { name: cleanName, pick: null, hasPicked: false, score: 0, connected: true });
 
     socket.join(roomCode);
     socket.data.roomCode = roomCode;
     socket.data.role = 'player';
 
-    ack?.({ ok: true, isLeader: socket.id === room.leaderSocketId, turnsPerPlayer: room.selectedTurnsPerPlayer });
+    ack?.({ ok: true });
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
     io.to(roomCode).emit('room:player-joined', { name: cleanName });
   });
 
-  // ---- Leader's phone reports its current "turns per player" radio selection live,
-  // so the host screen can display it without having its own editable control ----
-  socket.on('leader:update-rounds', ({ turnsPerPlayer } = {}) => {
-    const roomCode = socket.data.roomCode;
-    const room = rooms.get(roomCode);
-    // Allow changes in the lobby (before the first game) and at game-over (choosing for a replay) —
-    // block only while a round is actually being played. room.gameStarted alone isn't enough here,
-    // since it stays true forever once a game has ever started, including through game-over.
-    if (!room || (room.phase !== 'lobby' && room.phase !== 'game-over')) return;
-    if (socket.id !== room.leaderSocketId) return;
-
-    room.selectedTurnsPerPlayer = clampTurns(turnsPerPlayer);
-    io.to(roomCode).emit('room:rounds-selected', { turnsPerPlayer: room.selectedTurnsPerPlayer });
-  });
-
-  // ---- Host or leader starts the game, using whatever the leader currently has selected ----
-  socket.on('start-game', () => {
+  // ---- Host starts the game (this click is also what satisfies browser autoplay policy
+  // for songs played later via remote commands from a player's phone) ----
+  socket.on('start-game', ({ turnsPerPlayer } = {}) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.gameStarted) return;
-    const isAuthorized = socket.id === room.hostSocketId || socket.id === room.leaderSocketId;
-    if (!isAuthorized) return;
+    if (socket.id !== room.hostSocketId) return;
 
     if (room.players.size < 3) {
       emitStartError(room, 'Need at least 3 players to start (one judges each round, others pick).');
@@ -352,19 +415,18 @@ io.on('connection', (socket) => {
     }
 
     room.playerOrderSnapshot = Array.from(room.players.keys());
-    room.totalRounds = room.playerOrderSnapshot.length * clampTurns(room.selectedTurnsPerPlayer);
+    room.totalRounds = room.playerOrderSnapshot.length * clampTurns(turnsPerPlayer);
     room.currentRoundNumber = 1;
     room.gameStarted = true;
     startRound(room, roomCode);
   });
 
-  // ---- Host or leader restarts with fresh scores, using the leader's current selection ----
-  socket.on('play-again', () => {
+  // ---- Host restarts with fresh scores after game-over ----
+  socket.on('play-again', ({ turnsPerPlayer } = {}) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'game-over') return;
-    const isAuthorized = socket.id === room.hostSocketId || socket.id === room.leaderSocketId;
-    if (!isAuthorized) return;
+    if (socket.id !== room.hostSocketId) return;
 
     if (room.players.size < 3) {
       emitStartError(room, 'Need at least 3 players to start a new game.');
@@ -373,7 +435,7 @@ io.on('connection', (socket) => {
 
     for (const p of room.players.values()) p.score = 0;
     room.playerOrderSnapshot = Array.from(room.players.keys());
-    room.totalRounds = room.playerOrderSnapshot.length * clampTurns(room.selectedTurnsPerPlayer);
+    room.totalRounds = room.playerOrderSnapshot.length * clampTurns(turnsPerPlayer);
     room.currentRoundNumber = 1;
     room.gameStarted = true;
     io.to(roomCode).emit('room:play-again-sound');
@@ -578,23 +640,20 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const wasJudge = room.gameStarted && socket.id === getCurrentJudgeId(room) && room.phase !== 'game-over';
-    const wasLeader = socket.id === room.leaderSocketId;
-    room.players.delete(socket.id);
+    const player = room.players.get(socket.id);
 
-    if (wasLeader) {
-      const nextLeader = room.players.keys().next().value || null;
-      room.leaderSocketId = nextLeader;
-      if (nextLeader) io.to(nextLeader).emit('room:you-are-leader', { turnsPerPlayer: room.selectedTurnsPerPlayer });
+    // Once the game has started, keep a disconnected player's data (score, pick, place in the
+    // judge rotation) so they can reclaim it by rejoining with the same name — only remove them
+    // outright if they were still just sitting in the lobby, where there's nothing to preserve.
+    // If the current judge disconnects, the round simply waits for them to reconnect rather
+    // than being auto-skipped, since they can now pick back up right where they left off.
+    if (room.gameStarted && player) {
+      player.connected = false;
+    } else {
+      room.players.delete(socket.id);
     }
 
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
-
-    // If the current judge disconnects mid-round, skip the round rather than
-    // getting stuck — no points are awarded for a round nobody judged.
-    if (wasJudge) {
-      advanceRoundOrEndGame(room, roomCode);
-    }
   });
 });
 
