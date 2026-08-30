@@ -427,8 +427,8 @@
     if (!res.ok) return;
     roomCodeEl.textContent = res.code;
 
-    if (res.localIp) {
-      const joinUrl = `http://${res.localIp}:${res.port}/?code=${res.code}`;
+    if (res.joinBaseUrl) {
+      const joinUrl = `${res.joinBaseUrl}/?code=${res.code}`;
       document.getElementById('qr-section').classList.remove('hidden');
       new QRCode(document.getElementById('qrcode'), {
         text: joinUrl,

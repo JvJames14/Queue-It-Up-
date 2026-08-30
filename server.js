@@ -3,7 +3,6 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const http = require('http');
-const os = require('os');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -12,18 +11,18 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
-// Finds this machine's local-network IP (e.g. 192.168.x.x) so phones on the same
-// WiFi can reach the game — "localhost" only ever means "this exact device."
-function getLocalIpAddress() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
-      }
-    }
-  }
-  return null; // no network interface found — QR/URL will fall back to a manual-entry notice
+// Determines the base URL a player would need to reach this server, by reading exactly
+// what the host's own browser used to connect (from the request itself) — rather than
+// guessing via a platform-specific environment variable or the server's own network
+// interfaces. This works correctly whether running on a local network (e.g.
+// http://192.168.1.42:3000), deployed to Render or any other host (e.g.
+// https://queue-it-up.onrender.com), or behind a custom domain — with no per-platform
+// special-casing required.
+function getJoinBaseUrl(socket) {
+  const host = socket.handshake.headers.host;
+  if (!host) return null;
+  const proto = socket.handshake.headers['x-forwarded-proto'] || 'http';
+  return `${proto}://${host}`;
 }
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -289,7 +288,7 @@ io.on('connection', (socket) => {
     socket.join(code);
     socket.data.roomCode = code;
     socket.data.role = 'host';
-    ack?.({ ok: true, code, localIp: getLocalIpAddress(), port: PORT });
+    ack?.({ ok: true, code, joinBaseUrl: getJoinBaseUrl(socket) });
   });
 
   // ---- Player joins a room (only while it's still in the lobby) ----
