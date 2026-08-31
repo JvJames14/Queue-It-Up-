@@ -714,6 +714,7 @@
   });
 
   socket.on('room:game-over', ({ scoreboard }) => {
+    stopAllPlayback();
     exitSequentialFocus();
     gameView.classList.add('hidden');
     gameoverView.classList.remove('hidden');

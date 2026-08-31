@@ -145,9 +145,15 @@
   .rounds-picker input { accent-color: var(--accent); }
   .waiting-text { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 10px; }
   .hidden { display: none; }
+  #reconnect-banner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 2000;
+    background: var(--accent); color: #201827; text-align: center;
+    padding: 8px; font-weight: 700; font-size: 0.85rem;
+  }
 </style>
 </head>
 <body>
+<div id="reconnect-banner" class="hidden">Reconnecting…</div>
 <div class="wrap">
   <h1>🎧 Queue It Up!</h1>
 
@@ -305,6 +311,7 @@
   const nameInput = document.getElementById('name-input');
   const codeInput = document.getElementById('code-input');
   const joinBtn = document.getElementById('join-btn');
+  const reconnectBanner = document.getElementById('reconnect-banner');
   const joinError = document.getElementById('join-error');
 
   // If this page was opened via the host's QR code (e.g. ?code=ABCD), remember it for the
@@ -399,6 +406,10 @@
     codeInput.value = savedJoin.code || '';
   }
 
+  // Tracks whether we've successfully joined a room THIS page load — used to tell "fresh
+  // page load, haven't joined yet" apart from "already playing, connection just blipped."
+  let currentSession = null; // { name, code } once joined
+
   joinBtn.addEventListener('click', () => {
     const name = nameInput.value.trim();
     const code = codeInput.value.trim().toUpperCase();
@@ -411,6 +422,7 @@
         joinError.textContent = res.error;
         return;
       }
+      currentSession = { name, code };
       saveJoinInfo(name, code);
       joinView.classList.add('hidden');
       lobbyWaitView.classList.remove('hidden');
@@ -418,6 +430,23 @@
         lobbyWaitView.querySelector('p').textContent = "Welcome back! Reconnecting you to the game…";
       }
     });
+  });
+
+  // Socket.io reconnects the underlying network connection automatically after a brief drop
+  // (very common on mobile — screen lock, app switching, WiFi/cellular handoff) — but that
+  // reconnection gets a brand-new socket id, and the server has no way to know it's the same
+  // player unless we tell it. Without this, the player's own screen looks completely normal
+  // the whole time, while the host sees them stuck as "reconnecting" forever. This re-sends
+  // our join info the instant the connection comes back, using the exact same credentials —
+  // completely invisible to the player if the drop was brief.
+  socket.on('connect', () => {
+    if (currentSession) {
+      reconnectBanner.classList.add('hidden');
+      socket.emit('player:join', currentSession, () => {});
+    }
+  });
+  socket.on('disconnect', () => {
+    if (currentSession) reconnectBanner.classList.remove('hidden');
   });
 
   // ---- Pick mode toggle ----
