@@ -61,7 +61,7 @@
   .tv-frame.video-focus h1 { font-size: 2.6cqmin; margin: 0 0 0.4cqh; }
   /* iTunes previews have no video to fill the screen — even with the larger cover art,
      there's still empty space, so let the title grow to help fill it. */
-  .tv-frame.video-focus.itunes-playing h1 { font-size: 5.2cqmin; }
+  .tv-frame.video-focus.cover-showing h1 { font-size: 5.2cqmin; }
   .wrap {
     flex: 1; width: 100%; min-height: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -676,7 +676,7 @@
     gameView.classList.remove('focus-mode');
     gameView.classList.remove('choosing-chrome');
     tvFrameEl.classList.remove('video-focus');
-    tvFrameEl.classList.remove('itunes-playing');
+    tvFrameEl.classList.remove('cover-showing');
   }
 
   function showSequentialCard() {
@@ -693,9 +693,10 @@
     seqCover.classList.toggle('cover-wide', !!entry.track.youtube);
     seqTitle.innerHTML = escapeHtml(entry.track.title);
     seqArtist.textContent = entry.track.artist;
-    // Bigger title for iTunes picks even before play is pressed, not just once audio starts —
-    // there's no video either way, so the extra space is there from the moment the card shows.
-    tvFrameEl.classList.toggle('itunes-playing', !entry.track.youtube);
+    // Bigger title whenever a static cover/thumbnail is showing instead of video — true for
+    // iTunes picks always, and for YouTube picks too before play is pressed (still just a
+    // thumbnail at that point, no video filling the space yet).
+    tvFrameEl.classList.add('cover-showing');
   }
 
   socket.on('room:reveal-choosing', () => {
@@ -743,7 +744,7 @@
       audio.pause();
       seqCoverCard.classList.add('hidden');
       ytVideoWrap.classList.remove('hidden');
-      tvFrameEl.classList.remove('itunes-playing');
+      tvFrameEl.classList.remove('cover-showing');
       ytPlayer.loadVideoById({
         videoId: track.youtube.videoId,
         startSeconds: track.youtube.startSeconds || 0
@@ -753,7 +754,7 @@
       if (ytReady) ytPlayer.stopVideo();
       ytVideoWrap.classList.add('hidden');
       seqCoverCard.classList.remove('hidden');
-      tvFrameEl.classList.add('itunes-playing');
+      tvFrameEl.classList.add('cover-showing');
       audio.src = track.previewUrl;
       audio.play();
     }
