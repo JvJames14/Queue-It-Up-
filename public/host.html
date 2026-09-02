@@ -311,7 +311,6 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://www.youtube.com/iframe_api"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script>
   const socket = io();
@@ -464,6 +463,15 @@
     if (!ytReady) console.warn('[YouTube] Still not ready after 5s — check for an ad blocker or network restriction on youtube.com.');
   }, 5000);
   window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
+  // Injected dynamically (rather than a static <script> tag) so this callback is guaranteed to
+  // already be defined before the API library can possibly try to call it — a static tag placed
+  // earlier in the page raced against this assignment, and won under slow/uneven network
+  // conditions, which is why the player worked inconsistently from one page load to the next.
+  (function loadYouTubeIframeApi() {
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+  })();
 
   function handleYtStateChange(event) {
     // Clips now play to completion (or until the judge advances) — no fixed time cap.
