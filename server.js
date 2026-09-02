@@ -234,9 +234,19 @@ function sendCatchUpState(socket, room) {
   socket.emit('room:your-role', { isJudge: socket.id === judgeId });
 
   if (room.phase === 'picking') {
-    const me = room.players.get(socket.id);
-    if (me && socket.id !== judgeId && me.hasPicked) {
-      socket.emit('room:already-picked');
+    if (socket.id === judgeId) {
+      // The tally could have already been complete before the judge reconnected — the
+      // one-time "all picked" signal only fires reactively when the last pick comes in,
+      // so a reconnecting judge needs it re-checked and re-sent, or their Reveal button
+      // would stay stuck disabled even though everyone's actually already submitted.
+      if (allNonJudgePicked(room)) {
+        socket.emit('room:all-picked');
+      }
+    } else {
+      const me = room.players.get(socket.id);
+      if (me && me.hasPicked) {
+        socket.emit('room:already-picked');
+      }
     }
   }
 

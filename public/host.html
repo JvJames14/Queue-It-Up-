@@ -59,6 +59,9 @@
   .tv-frame.video-focus .header-row { margin-top: 0.4cqh; }
   .tv-frame.video-focus .logo-mark { font-size: 6cqmin; margin-bottom: 0.2cqh; }
   .tv-frame.video-focus h1 { font-size: 2.6cqmin; margin: 0 0 0.4cqh; }
+  /* iTunes previews have no video to fill the screen — even with the larger cover art,
+     there's still empty space, so let the title grow to help fill it. */
+  .tv-frame.video-focus.itunes-playing h1 { font-size: 5.2cqmin; }
   .wrap {
     flex: 1; width: 100%; min-height: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -81,6 +84,17 @@
     background: linear-gradient(90deg, #ff3d9a, #ffd94a 50%, #7c4dff);
     -webkit-background-clip: text; background-clip: text; color: transparent;
     filter: drop-shadow(0 0 1.8cqmin rgba(255, 61, 154, 0.35));
+  }
+  @keyframes titlePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.045); }
+  }
+  /* Gentle pulse on the title only while waiting in the lobby or admiring the final scores —
+     not during active gameplay, where it would just be a distraction. */
+  .tv-frame:has(#lobby-view:not(.hidden)) h1,
+  .tv-frame:has(#gameover-view:not(.hidden)) h1 {
+    display: inline-block;
+    animation: titlePulse 2.2s ease-in-out infinite;
   }
   .round-header { font-family: 'Fredoka', sans-serif; font-size: 2.7cqmin; font-weight: 600; color: var(--muted); margin-top: 20px; margin-bottom: 0.9cqh; }
   .lobby-top-row { display: flex; align-items: center; justify-content: center; gap: 5cqw; flex-wrap: wrap; }
@@ -109,11 +123,12 @@
   .players { display: flex; flex-wrap: wrap; gap: 1.4cqmin; justify-content: center; margin: 2cqh 0; max-height: 20cqh; overflow-y: auto; }
   .player-chip {
     background: var(--panel); border: 2px solid #3c3560; border-radius: 999px;
-    padding: 1.2cqh 2.4cqw; font-size: 2cqmin; display: flex; align-items: center; gap: 0.9cqmin;
+    padding: 1.2cqh 2.4cqw; font-size: 2cqmin; font-weight: 700; display: flex; align-items: center; gap: 0.9cqmin;
   }
   .player-chip .dot { width: 1cqmin; height: 1cqmin; border-radius: 50%; background: #5a5382; }
+  .player-chip.picked { background: rgba(74, 222, 128, 0.18); border-color: #4ade80; }
   .player-chip.picked .dot { background: #4ade80; box-shadow: 0 0 0.9cqmin #4ade80; }
-  .player-chip.judge { border-color: var(--gold); box-shadow: 0 0 1.5cqmin rgba(255,217,74,0.3); }
+  .player-chip.judge { background: rgba(74, 222, 128, 0.18); border-color: #4ade80; }
   .player-chip.disconnected { opacity: 0.5; font-style: italic; }
   button {
     border: none; border-radius: 1.5cqmin; padding: 1.9cqh 3cqw; font-weight: 700;
@@ -125,7 +140,7 @@
   .error-text { color: #ff8a9c; font-size: 1.75cqmin; min-height: 1.2em; }
   .rounds-picker {
     display: flex; align-items: center; justify-content: center; gap: 1.5cqmin;
-    margin: 2cqh 0 0.8cqh; font-size: 1.9cqmin; color: var(--muted);
+    margin: 2cqh 0 0.8cqh; font-size: 1.9cqmin; font-weight: 700; color: var(--muted);
   }
   .rounds-picker label {
     background: var(--panel); border: 2px solid #3c3560; border-radius: 1.2cqmin;
@@ -151,7 +166,7 @@
 
   /* Focus mode: while stepping through submissions one at a time, hide the picking-phase
      chrome (round header, judge banner, prompt, player list) so the video/cover can dominate. */
-  #game-view.focus-mode .seq-card img { width: 34cqmin; height: 34cqmin; }
+  #game-view.focus-mode .seq-card img { width: 51cqmin; height: 51cqmin; }
   #game-view.focus-mode .seq-card img.cover-wide { width: 60cqmin; height: 34cqmin; }
   #game-view.focus-mode .seq-card .title { font-size: 3.4cqmin; }
   #game-view.focus-mode .seq-card .artist { font-size: 2.5cqmin; }
@@ -187,6 +202,7 @@
     border-radius: 1.8cqmin; padding: 1.5cqh 2.2cqw; border: 2px solid transparent;
   }
   .reveal-card.now-playing { border-color: var(--accent); box-shadow: 0 0 2.2cqmin rgba(255,61,154,0.3); }
+  .reveal-card.winner { background: rgba(255, 217, 74, 0.18); border-color: var(--gold); box-shadow: 0 0 2.2cqmin rgba(255,217,74,0.35); }
   .reveal-card img { width: 7cqmin; height: 7cqmin; border-radius: 1.2cqmin; }
   .reveal-card img.cover-wide { width: 12.4cqmin; height: 7cqmin; object-fit: cover; }
   .reveal-card .meta { flex: 1; }
@@ -200,8 +216,9 @@
   .score-row {
     display: flex; justify-content: space-between; background: var(--panel);
     border-radius: 1.8cqmin; padding: 1.7cqh 2.7cqw; margin-bottom: 1.2cqh; font-weight: 600; font-size: 2.3cqmin;
-    max-width: 52cqw; margin-left: auto; margin-right: auto;
+    max-width: 52cqw; margin-left: auto; margin-right: auto; border: 2px solid transparent;
   }
+  .score-row.winner { background: rgba(255, 217, 74, 0.18); border-color: var(--gold); box-shadow: 0 0 2.2cqmin rgba(255,217,74,0.35); }
   h2 { font-family: 'Fredoka', sans-serif; font-size: 3.6cqmin; margin: 0.8cqh 0; }
   .hidden { display: none; }
 </style>
@@ -340,11 +357,54 @@
     osc.stop(startTime + duration + 0.03);
   }
 
+  // A short burst of filtered noise — used for the card-shuffle texture, since a real
+  // shuffle sounds like a percussive flutter, not a musical tone.
+  function playNoiseBurst(startTime, duration, filterFreq, gainPeak) {
+    const ctx = getAudioCtx();
+    const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * duration));
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = filterFreq;
+    filter.Q.value = 1.2;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(gainPeak, startTime + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    noise.start(startTime);
+    noise.stop(startTime + duration + 0.02);
+  }
+
+  // ---- Real audio-file sound effects ----
+  // Files live in /public/sounds/ and are keyed by event name here — swapping or adding
+  // one later is just a one-line change to this list plus dropping the file in that folder.
+  const sfxFiles = {
+    revealPicks: new Audio('/sounds/reveal-picks.mp3'),
+    newPrompt: new Audio('/sounds/new-prompt.mp3'),
+    winnerChosen: new Audio('/sounds/winner-chosen.mp3')
+  };
+  function playSfxFile(name) {
+    const audio = sfxFiles[name];
+    if (!audio) return;
+    audio.currentTime = 0;
+    audio.play().catch(() => {}); // ignore if it can't play yet (e.g. before the unlock click)
+  }
+
   const sfx = {
-    playerJoined() {
+    gameStart() {
       const t = getAudioCtx().currentTime;
-      playTone(660, t, 0.12, 'triangle', 0.18);
-      playTone(880, t + 0.09, 0.15, 'triangle', 0.18);
+      // Rising arpeggio into a bright resolve (previously used for "reveal picks")
+      playTone(392, t, 0.09, 'triangle', 0.18);
+      playTone(494, t + 0.08, 0.09, 'triangle', 0.18);
+      playTone(587, t + 0.16, 0.09, 'triangle', 0.18);
+      playTone(784, t + 0.24, 0.32, 'sine', 0.24);
     },
     pickSubmitted() {
       const t = getAudioCtx().currentTime;
@@ -357,21 +417,15 @@
       playTone(783.99, t + 0.2, 0.24, 'triangle', 0.22);
     },
     shuffle() {
-      const t = getAudioCtx().currentTime;
-      for (let i = 0; i < 6; i++) {
-        playTone(280 + Math.random() * 520, t + i * 0.045, 0.05, 'square', 0.1);
-      }
+      // Custom card-riffle sound clip instead of synthesized noise bursts
+      playSfxFile('newPrompt');
     },
     revealPicks() {
-      const t = getAudioCtx().currentTime;
-      playSweep(220, 1000, t, 0.35, 'sawtooth', 0.18);
+      playSfxFile('revealPicks');
     },
     winnerChosen() {
-      const t = getAudioCtx().currentTime;
-      playTone(523.25, t, 0.14, 'triangle', 0.24);
-      playTone(659.25, t + 0.12, 0.14, 'triangle', 0.24);
-      playTone(783.99, t + 0.24, 0.14, 'triangle', 0.24);
-      playTone(1046.5, t + 0.36, 0.4, 'triangle', 0.26);
+      // Custom sound clip instead of synthesized tones
+      playSfxFile('winnerChosen');
     },
     nextRound() {
       const t = getAudioCtx().currentTime;
@@ -385,6 +439,7 @@
       playTone(659.25, t + 0.18, 0.2, 'triangle', 0.2);
     }
   };
+
 
   // ---- YouTube IFrame player setup ----
   let ytPlayer = null;
@@ -485,6 +540,7 @@
 
   startGameBtn.addEventListener('click', () => {
     getAudioCtx();
+    sfx.gameStart();
     const turns = document.querySelector('input[name="rounds-lobby"]:checked').value;
     socket.emit('start-game', { turnsPerPlayer: Number(turns) });
   });
@@ -510,7 +566,7 @@
     players.forEach(p => {
       const chip = document.createElement('div');
       chip.className = 'player-chip' + (p.hasPicked ? ' picked' : '') + (p.isJudge ? ' judge' : '') + (p.connected === false ? ' disconnected' : '');
-      const label = (p.isJudge ? '👑 ' : '') + escapeHtml(p.name) + (showScore ? ` · ${p.score} pts` : '') + (p.connected === false ? ' (reconnecting…)' : '');
+      const label = escapeHtml(p.name) + (showScore ? ` · ${p.score} pts` : '') + (p.connected === false ? ' (reconnecting…)' : '');
       chip.innerHTML = `<span class="dot"></span> ${label}`;
       container.appendChild(chip);
     });
@@ -533,7 +589,7 @@
   });
 
   socket.on('room:player-joined', () => {
-    sfx.playerJoined();
+    sfx.nextRound();
   });
 
   socket.on('room:pick-submitted', () => {
@@ -552,7 +608,7 @@
     gameView.classList.remove('hidden');
     exitSequentialFocus();
     roundLabelEl.textContent = `Round ${roundNumber} of ${totalRounds}`;
-    judgeBannerEl.textContent = `👑 ${judgeName} is judging this round`;
+    judgeBannerEl.textContent = `${judgeName} is judging this round`;
     promptTextEl.textContent = prompt;
     sequentialView.classList.add('hidden');
     revealListEl.classList.add('hidden');
@@ -612,6 +668,7 @@
     gameView.classList.remove('focus-mode');
     gameView.classList.remove('choosing-chrome');
     tvFrameEl.classList.remove('video-focus');
+    tvFrameEl.classList.remove('itunes-playing');
   }
 
   function showSequentialCard() {
@@ -628,6 +685,9 @@
     seqCover.classList.toggle('cover-wide', !!entry.track.youtube);
     seqTitle.innerHTML = escapeHtml(entry.track.title);
     seqArtist.textContent = entry.track.artist;
+    // Bigger title for iTunes picks even before play is pressed, not just once audio starts —
+    // there's no video either way, so the extra space is there from the moment the card shows.
+    tvFrameEl.classList.toggle('itunes-playing', !entry.track.youtube);
   }
 
   socket.on('room:reveal-choosing', () => {
@@ -675,6 +735,7 @@
       audio.pause();
       seqCoverCard.classList.add('hidden');
       ytVideoWrap.classList.remove('hidden');
+      tvFrameEl.classList.remove('itunes-playing');
       ytPlayer.loadVideoById({
         videoId: track.youtube.videoId,
         startSeconds: track.youtube.startSeconds || 0
@@ -684,6 +745,7 @@
       if (ytReady) ytPlayer.stopVideo();
       ytVideoWrap.classList.add('hidden');
       seqCoverCard.classList.remove('hidden');
+      tvFrameEl.classList.add('itunes-playing');
       audio.src = track.previewUrl;
       audio.play();
     }
@@ -707,7 +769,10 @@
 
   socket.on('room:winner-chosen', ({ index }) => {
     const card = revealListEl.querySelector(`.reveal-card[data-index="${index}"]`);
-    if (card) card.querySelector('.winner-badge').classList.remove('hidden');
+    if (card) {
+      card.classList.add('winner');
+      card.querySelector('.winner-badge').classList.remove('hidden');
+    }
     // Reveal who picked what for every song now that judging is done
     revealListEl.querySelectorAll('.by').forEach(el => el.classList.remove('hidden'));
     sfx.winnerChosen();
@@ -719,12 +784,12 @@
     gameView.classList.add('hidden');
     gameoverView.classList.remove('hidden');
     gameoverErrorEl.textContent = '';
+    sfx.nextRound();
     finalScoreboardEl.innerHTML = '';
     scoreboard.forEach((p, i) => {
-      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
       const row = document.createElement('div');
-      row.className = 'score-row';
-      row.innerHTML = `<span>${medal} ${escapeHtml(p.name)}</span><span>${p.score} pts</span>`;
+      row.className = 'score-row' + (i === 0 ? ' winner' : '');
+      row.innerHTML = `<span>${i + 1}. ${escapeHtml(p.name)}</span><span>${p.score} pts</span>`;
       finalScoreboardEl.appendChild(row);
     });
   });

@@ -40,6 +40,7 @@
   .primary { background: var(--accent); color: #201827; box-shadow: 0 4px 16px rgba(255,61,154,0.35); }
   .primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
   .secondary { background: #302b4a; color: var(--text); }
+  .secondary.confirm-armed { background: #ff8a3d; color: #201827; }
   .error { color: #ff8a9c; font-size: 0.85rem; margin-top: 6px; min-height: 1.2em; }
 
   .round-header { font-family: 'Fredoka', sans-serif; font-size: 1rem; font-weight: 600; color: var(--muted); text-align: center; margin-top: 4px; }
@@ -123,7 +124,7 @@
     border-radius: 12px; padding: 10px 12px; border: 2px solid transparent;
   }
   .reveal-card.now-playing { border-color: var(--accent); }
-  .reveal-card.winner { border-color: var(--gold); }
+  .reveal-card.winner { background: rgba(255, 217, 74, 0.18); border-color: var(--gold); box-shadow: 0 0 16px rgba(255,217,74,0.35); }
   .reveal-card img { width: 48px; height: 48px; border-radius: 8px; }
   .reveal-card img.cover-wide { width: 85px; height: 48px; border-radius: 6px; object-fit: cover; }
   .reveal-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
@@ -132,8 +133,9 @@
 
   .score-row {
     display: flex; justify-content: space-between; background: var(--panel);
-    border-radius: 10px; padding: 12px 18px; margin-bottom: 8px; font-weight: 600;
+    border-radius: 10px; padding: 12px 18px; margin-bottom: 8px; font-weight: 600; border: 2px solid transparent;
   }
+  .score-row.winner { background: rgba(255, 217, 74, 0.18); border-color: var(--gold); box-shadow: 0 0 16px rgba(255,217,74,0.35); }
   .rounds-picker {
     display: flex; align-items: center; justify-content: center; gap: 8px;
     margin: 14px 0 8px; font-size: 0.85rem; color: var(--muted);
@@ -492,6 +494,8 @@
     // reset judge panel
     judgeStatusEl.textContent = 'Waiting for other players to pick…';
     judgeRevealBtn.disabled = true;
+    judgeNewPromptBtn.classList.remove('hidden');
+    resetNewPromptBtn();
     judgePrereveal.classList.remove('hidden');
     judgeRevealed.classList.add('hidden');
     judgeSequentialView.classList.remove('hidden');
@@ -504,9 +508,28 @@
 
   // Judge requests a fresh random prompt without starting a whole new round.
   // Everyone's in-progress pick is cleared server-side, so the picker UI resets here too.
+  // Two-tap inline confirmation (no browser popup) — first tap arms it, second tap within
+  // a few seconds actually triggers it; otherwise it quietly resets.
+  let newPromptArmed = false;
+  let newPromptResetTimer = null;
   judgeNewPromptBtn.addEventListener('click', () => {
+    if (!newPromptArmed) {
+      newPromptArmed = true;
+      judgeNewPromptBtn.textContent = 'Tap again to confirm';
+      judgeNewPromptBtn.classList.add('confirm-armed');
+      clearTimeout(newPromptResetTimer);
+      newPromptResetTimer = setTimeout(resetNewPromptBtn, 3000);
+      return;
+    }
+    resetNewPromptBtn();
     socket.emit('judge:new-prompt');
   });
+  function resetNewPromptBtn() {
+    newPromptArmed = false;
+    clearTimeout(newPromptResetTimer);
+    judgeNewPromptBtn.textContent = '↻ New prompt';
+    judgeNewPromptBtn.classList.remove('confirm-armed');
+  }
 
   socket.on('room:prompt-changed', ({ prompt }) => {
     promptTextEl.textContent = prompt;
@@ -556,6 +579,7 @@
   socket.on('room:all-picked', () => {
     judgeStatusEl.textContent = 'Everyone has picked! Ready to reveal.';
     judgeRevealBtn.disabled = false;
+    judgeNewPromptBtn.classList.add('hidden'); // no reshuffling once everyone's already committed
   });
 
   // Sent only during reconnection catch-up, when this player already submitted a pick
@@ -567,8 +591,8 @@
   function updatePanelVisibility() {
     if (!roundInfo) return;
     judgeBannerEl.textContent = isJudge
-      ? "👑 You're the judge this round!"
-      : `👑 ${roundInfo.judgeName} is judging this round`;
+      ? "You're the judge this round!"
+      : `${roundInfo.judgeName} is judging this round`;
 
     const showPickingUI = !isJudge && currentPhase === 'picking';
     // pickerPanel / pickSubmittedView are mutually exclusive sub-states of showPickingUI,
@@ -952,10 +976,9 @@
     gameoverView.classList.remove('hidden');
     finalScoreboardEl.innerHTML = '';
     scoreboard.forEach((p, i) => {
-      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
       const row = document.createElement('div');
-      row.className = 'score-row';
-      row.innerHTML = `<span>${medal} ${escapeHtml(p.name)}</span><span>${p.score} pts</span>`;
+      row.className = 'score-row' + (i === 0 ? ' winner' : '');
+      row.innerHTML = `<span>${i + 1}. ${escapeHtml(p.name)}</span><span>${p.score} pts</span>`;
       finalScoreboardEl.appendChild(row);
     });
   });
