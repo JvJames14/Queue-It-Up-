@@ -219,6 +219,13 @@
     max-width: 52cqw; margin-left: auto; margin-right: auto; border: 2px solid transparent;
   }
   .score-row.winner { background: rgba(255, 217, 74, 0.18); border-color: var(--gold); box-shadow: 0 0 2.2cqmin rgba(255,217,74,0.35); }
+  /* More than 5 players: switch to two columns (filled top row first) so the whole
+     scoreboard fits on screen at once, same treatment as the winner-selection grid. */
+  #final-scoreboard.two-col {
+    display: grid; grid-template-columns: repeat(2, 1fr); grid-auto-flow: row;
+    gap: 0.8cqh 2cqw; max-width: 88cqw; margin: 0 auto;
+  }
+  #final-scoreboard.two-col .score-row { max-width: none; margin: 0; }
   h2 { font-family: 'Fredoka', sans-serif; font-size: 3.6cqmin; margin: 0.8cqh 0; }
   .hidden { display: none; }
 </style>
@@ -821,6 +828,7 @@
     gameoverErrorEl.textContent = '';
     sfx.nextRound();
     finalScoreboardEl.innerHTML = '';
+    finalScoreboardEl.classList.toggle('two-col', scoreboard.length > 5);
     scoreboard.forEach((p, i) => {
       const row = document.createElement('div');
       row.className = 'score-row' + (i === 0 ? ' winner' : '');
