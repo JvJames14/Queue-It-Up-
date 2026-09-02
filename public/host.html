@@ -278,7 +278,7 @@
 
     <!-- Lives outside sequential-view/reveal-list so it stays independently showable during
          BOTH the one-at-a-time walkthrough AND replays from the winner-selection list. -->
-    <div class="yt-video-wrap hidden" id="yt-video-wrap"><div id="yt-player"></div></div>
+    <div class="yt-video-wrap hidden" id="yt-video-wrap"><div id="yt-player-container"></div></div>
 
     <!-- One-at-a-time walkthrough -->
     <div id="sequential-view" class="hidden">
@@ -441,26 +441,51 @@
 
 
   // ---- YouTube IFrame player setup ----
+  // A fresh player instance is created for every video (rather than reusing one player
+  // across the whole session) — repeatedly calling loadVideoById() on the same long-lived
+  // instance is a known trigger for the video rendering as a solid black frame while its
+  // audio plays normally underneath. A brand-new iframe each time avoids that stuck state.
   let ytPlayer = null;
   let ytReady = false;
+  let ytApiLoaded = false;
+  let ytPlayerCounter = 0;
 
-  function onYouTubeIframeAPIReady() {
-    console.log('[YouTube] IFrame API loaded, creating player…');
-    ytPlayer = new YT.Player('yt-player', {
+  function createYtPlayer(onReadyCallback) {
+    ytReady = false;
+    if (ytPlayer && typeof ytPlayer.destroy === 'function') {
+      try { ytPlayer.destroy(); } catch (e) {}
+    }
+    const container = document.getElementById('yt-player-container');
+    container.innerHTML = '';
+    const freshDiv = document.createElement('div');
+    freshDiv.id = 'yt-player-' + (++ytPlayerCounter);
+    container.appendChild(freshDiv);
+
+    ytPlayer = new YT.Player(freshDiv.id, {
       height: '315',
       width: '560',
       playerVars: { rel: 0 },
       events: {
-        onReady: () => { ytReady = true; console.log('[YouTube] Player ready.'); },
+        onReady: () => {
+          ytReady = true;
+          console.log('[YouTube] Player ready.');
+          if (onReadyCallback) onReadyCallback();
+        },
         onStateChange: handleYtStateChange,
         onError: (e) => console.error('[YouTube] Player error, code:', e.data)
       }
     });
   }
+
+  function onYouTubeIframeAPIReady() {
+    console.log('[YouTube] IFrame API loaded, creating player…');
+    ytApiLoaded = true;
+    createYtPlayer();
+  }
   // If this never logs anything, the youtube.com/iframe_api script itself never loaded —
   // almost always an ad blocker or privacy extension blocking youtube.com, not a bug in this page.
   setTimeout(() => {
-    if (!ytReady) console.warn('[YouTube] Still not ready after 5s — check for an ad blocker or network restriction on youtube.com.');
+    if (!ytApiLoaded) console.warn('[YouTube] Still not ready after 5s — check for an ad blocker or network restriction on youtube.com.');
   }, 5000);
   window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
   // Injected dynamically (rather than a static <script> tag) so this callback is guaranteed to
@@ -739,17 +764,18 @@
     const card = revealListEl.querySelector(`.reveal-card[data-index="${index}"]`);
     if (card) card.classList.add('now-playing');
 
-    if (track.youtube && ytReady) {
+    if (track.youtube && ytApiLoaded) {
       // Plays until the video ends naturally or the judge advances — no fixed time cap.
       audio.pause();
       seqCoverCard.classList.add('hidden');
       ytVideoWrap.classList.remove('hidden');
       tvFrameEl.classList.remove('cover-showing');
-      ytPlayer.loadVideoById({
-        videoId: track.youtube.videoId,
-        startSeconds: track.youtube.startSeconds || 0
+      const videoId = track.youtube.videoId;
+      const startSeconds = track.youtube.startSeconds || 0;
+      createYtPlayer(() => {
+        ytPlayer.loadVideoById({ videoId, startSeconds });
+        ytPlayer.playVideo();
       });
-      ytPlayer.playVideo();
     } else {
       if (ytReady) ytPlayer.stopVideo();
       ytVideoWrap.classList.add('hidden');
