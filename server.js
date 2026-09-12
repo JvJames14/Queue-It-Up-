@@ -58,6 +58,21 @@ app.get('/api/search', async (req, res) => {
 });
 
 // ---------- YouTube search proxy (optional: lets a player pick a custom start time) ----------
+// YouTube's API returns titles/channel names with HTML entities already encoded
+// (e.g. "Don&#39;t Stop" instead of "Don't Stop") — decode them here so they display
+// correctly instead of showing the raw entity codes.
+function decodeHtmlEntities(str) {
+  if (!str) return str;
+  return str
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(code))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
 app.get('/api/youtube-search', async (req, res) => {
   const q = req.query.q;
   if (!q || !q.trim()) {
@@ -76,8 +91,8 @@ app.get('/api/youtube-search', async (req, res) => {
     }
     const results = (data.items || []).map(item => ({
       videoId: item.id.videoId,
-      title: item.snippet.title,
-      channel: item.snippet.channelTitle,
+      title: decodeHtmlEntities(item.snippet.title),
+      channel: decodeHtmlEntities(item.snippet.channelTitle),
       // Prefer the highest-resolution thumbnail YouTube provides for this video
       thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || ''
     }));
@@ -156,7 +171,77 @@ const PROMPTS = [
   "Play a song from a famous artist or band you think is wildly overrated",
   "Play a song from a famous artist or band you think is wildly underrated",
   "Play a song that was ruined because it was wildly over played",
-  "Play a song that everybody loves, but you secretly hate"
+  "Play a song that everybody loves, but you secretly hate",
+  "Play the song that best describes the vibe of your last existential crisis",
+  "Play a song with an iconic intro",
+  "Play a song that instantly makes you want to drop everything and do a terrible, aggressive air-guitar solo",
+  "Play the song you passionately belted out as a kid, despite being way too young to understand or relate to a single word of it",
+  "Play the song you used to dramatically stare out the car window to, pretending you were the heartbroken main character in a music video",
+  "Play the absolute worst, most inappropriate song to have fading in as your casket is slowly lowered into the ground",
+  "Play the song you want playing as your ghost aggressively haunts the people who didn't show up to your funeral",
+  "Play the song that feels like a punch to the gut every single time, even when your life is going completely fine",
+  "Play a song with a melody so hauntingly sad that the instrumental alone could make a room full of people tear up",
+  "Play the song you'd use to communicate with aliens to prove that humanity is actually worth saving",
+  "Play a song where the beat is so catchy and upbeat that most people never realize the lyrics are completely unhinged",
+  "Play a track where the artist sounds like they genuinely lost their mind in the recording booth and nobody stopped them",
+  "Play the song that once you hear three seconds of it, it stays in your head for three business days",
+  "Play the theme song, commercial jingle, or viral track that has lived rent-free in your head since 2008",
+  "Play the song you'd blast outside your ex's window at 3:00 AM",
+  "Play the song that feels like a middle finger in audio form",
+  "Play the song that feels like the ultimate, chaotic soundtrack for arson and destruction",
+  "Play a song with lyrics so cryptically weird nobody in the room has any idea what the artist is actually talking about",
+  "Play the song that should be playing while a team of criminal masterminds executes a high-stakes casino robbery",
+  "Play the song that plays when the hero realizes you were the bad guy the entire time",
+  "Play the song that instantly transports you back to standing awkwardly on the edge of a gym floor under dim lighting",
+  "Play the track you blasted on loop the second you got your driver's license and total freedom",
+  "Play the ultimate island track that feels like holding a cold drink with a tiny paper umbrella in it",
+  "Play the song the President secretly listens to in the Oval Office with noise-canceling headphones when no advisors are watching",
+  "Play the song you think an undercover cop puts on in their unmarked cruiser to try and look \"cool and hip\" with the kids",
+  "Play the song an astronaut blasts inside their spacesuit while quietly staring at the void of deep space and floating in zero gravity",
+  "Play the song a sweet grandma listens to while cruising down the highway at 35 mph, completely convinced she's living a life of pure crime and danger",
+  "Play the track Snoop Dogg puts on when he's just casually baking brownies in the kitchen with Martha Stewart",
+  "Play the song that plays in Julius Caesar's head the exact second he turns around, locks eyes with Brutus, and whispers \"Et tu, Brute?\"",
+  "Play the track the band on the Titanic should have played if they decided to throw a full-blown chaotic dance party instead of staying formal",
+  "Play the absolute chaos anthem that would be blasting while a group of angry colonists dumps millions of dollars of British tea into the Boston Harbor under the cover of night",
+  "Play the track King George III would listen to in a dark room after receiving the letter explaining that Boston harbor is now a giant cup of salted Earl Grey",
+  "Play the song that feels like standing in the middle of Woodstock in 1969 surrounded by half a million people, mud, and pure musical history",
+  "Play the song that blasts over the stadium loudspeakers the exact second a streaker jumps the fence and starts dodging security guards on the field",
+  "Play the track Newton put on right after getting hit on the head by an apple to act like inventing gravity was his plan all along",
+  "Play the absolute unhinged party anthem that should have blasted across the entire country the exact second the 21st Amendment was ratified on December 5, 1933",
+  "Play the track you'd play while cracking open a cold, legal beer for the first time since 1920, staring into the sunset like a freed prisoner due to prohibition",
+  "Play the petty anthem a 1920 saloon owner blasts on the final night before Prohibition kicks in at midnight, determined to empty every single barrel",
+  "Play the track Mother Nature blasts on full volume when she decides a specific town needs three tornados, a heatwave, and a sudden snowstorm all in the same weekend",
+  "Play the song Santa puts on when he catches a local crew trying to hotwire his reindeer and steal the velvet toy bag off his sleigh",
+  "Play the song Santa Claus blasts in his noise-canceling headphones while dumping 50 pounds of coal onto the bedroom floor of an absolute menace",
+  "Play the song the Tooth Fairy listens to while deducting 75% of the cash value because the tooth is covered in cavity spots and sugar rot",
+  "Play the track Willy Wonka queues up to announce he is handing the keys to a billion-dollar OSHA nightmare of a factory over to an 11-year-old child",
+  "Play the song Snape listens to in his dark dungeon while aggressively taking 50 points from Gryffindor for someone breathing too loudly in Potions class",
+  "Play the song that instantly starts playing in your head the moment the Sorting Hat shouts \"HUFFLEPUFF!\"",
+  "Play the track the Bermuda Triangle radio operator puts on when another cargo ship vanishes off the radar and they just mark it down as a standard Tuesday",
+  "Play the song you blast on your commute home after clocking out on a Friday afternoon",
+  "Play the villain song from an animated movie that goes so unnecessarily hard you end up low-key rooting for the bad guy",
+  "Play the song specifically made for a movie that had zero business going as hard as it did",
+  "Play the Disney song that's an absolute bop, zero nostalgia required",
+  "Play a song by an artist who left us way too soon, knowing they had so many hits left in them",
+  "Play a song with an animal in the title that is a total bop",
+  "Play a song that describes the exact feeling of unbuttoning your pants after a massive meal",
+  "Play the song that plays in your head when you invite someone over to \"watch a movie\" with zero intention of finishing the movie",
+  "Play the track that plays when the movie ends and you realize your \"Netflix and chill\" night was strictly just a movie night",
+  "Play the song where every former theater kid in the room will automatically belt out",
+  "Play a song that would make a great graduation song",
+  "Play the song that starts playing in your head ten minutes into the date when you realize there is zero chemistry and you are just waiting for an acceptable time to leave",
+  "Play the emo song that instantly makes you want to flip your side-swept fringe, put on heavy black eyeliner, and update your MySpace status",
+  "Play the song that used to be your absolute highest-volume, most embarrassing ringtone or alarm back in the day",
+  "Play the song from a Christian pop-punk or alt-rock band that secretly slapped, even if you weren't religious",
+  "Play the heavy, dramatic beat drop that plays in your head during Lucifer's 10,000-mile-per-hour fall from grace",
+  "Play the intense, high-anxiety song you put on while pacing the deck of Noah's Ark, trying to keep two starving lions away from the two innocent gazelles",
+  "Play the song that served as Jesus's official walkout music when he exited the tomb on day three",
+  "Play the claustrophobic, aquatic track you listen to while sitting inside the stomach of a giant whale for three days rethinking all your life choices",
+  "Play a song that is explicitly about crime and has no business being an absolute banger",
+  "Play the song that would be automatically blasting at 100% volume the second someone landed on your 2006 MySpace profile",
+  "If MySpace made a comeback today, play the track you'd set as your main profile song",
+  "Play the song that blasts in your head the exact second you snap all six Infinity Stones into your gauntlet and gain ultimate power over the universe",
+  "Play your favorite one hit wonder"
 ];
 
 /** rooms: Map<code, {
@@ -182,11 +267,15 @@ function makeRoomCode() {
   return code;
 }
 
-function pickPrompt(excludeIndex) {
+function pickPrompt(excludeIndexes) {
+  const excluded = excludeIndexes instanceof Set ? excludeIndexes : new Set(excludeIndexes != null ? [excludeIndexes] : []);
+  // If every prompt has somehow already been shown this round (a lot of shuffling on a
+  // short list), fall back to allowing repeats rather than looping forever.
+  const pool = excluded.size >= PROMPTS.length ? new Set() : excluded;
   let idx;
   do {
     idx = Math.floor(Math.random() * PROMPTS.length);
-  } while (PROMPTS.length > 1 && idx === excludeIndex);
+  } while (pool.has(idx));
   return idx;
 }
 
@@ -205,6 +294,7 @@ function getCurrentJudgeId(room) {
 function playerListPayload(room) {
   const judgeId = getCurrentJudgeId(room);
   return Array.from(room.players.entries()).map(([id, p]) => ({
+    id,
     name: p.name,
     hasPicked: p.hasPicked,
     score: p.score,
@@ -270,6 +360,56 @@ function sendCatchUpState(socket, room) {
   }
 }
 
+// Host-equivalent of sendCatchUpState — replays enough state for the host (TV) screen to
+// rebuild its current view after reconnecting, whether that's a brief network drop or a
+// full page reload (e.g. the browser tab was closed and reopened).
+function sendHostCatchUpState(socket, room) {
+  socket.emit('room:players-updated', playerListPayload(room));
+
+  if (room.phase === 'game-over') {
+    socket.emit('room:game-over', { scoreboard: buildScoreboard(room) });
+    return;
+  }
+  if (!room.gameStarted) return; // still in the lobby — nothing else to replay
+
+  const judgeId = getCurrentJudgeId(room);
+  const judgePlayer = room.players.get(judgeId);
+  socket.emit('room:round-started', {
+    roundNumber: room.currentRoundNumber,
+    totalRounds: room.totalRounds,
+    prompt: room.prompt,
+    judgeName: judgePlayer?.name || 'Unknown'
+  });
+
+  if (room.phase === 'reveal' && room.reveal) {
+    socket.emit('room:reveal', {
+      picks: room.reveal.picks.map(({ playerName, track }) => ({ playerName, track })),
+      revealIndex: room.reveal.revealIndex,
+      subPhase: room.reveal.subPhase
+    });
+    if (room.reveal.subPhase === 'choosing') {
+      socket.emit('room:reveal-choosing');
+      if (room.reveal.winnerIndex !== null) {
+        const winnerEntry = room.reveal.picks[room.reveal.winnerIndex];
+        socket.emit('room:winner-chosen', {
+          index: room.reveal.winnerIndex,
+          playerName: winnerEntry.playerName,
+          scoreboard: buildScoreboard(room)
+        });
+      }
+    } else if (room.reveal.nowPlayingIndex !== null && room.reveal.nowPlayingIndex !== undefined) {
+      // Resume showing whichever song was actively playing when the host dropped —
+      // playback itself may need a fresh click to actually resume (browser autoplay
+      // rules reset on a genuine page reload), but at least the screen shows the
+      // right song instead of snapping back to the picking view.
+      const entry = room.reveal.picks[room.reveal.nowPlayingIndex];
+      if (entry) {
+        socket.emit('room:now-playing', { index: room.reveal.nowPlayingIndex, track: entry.track, playerName: entry.playerName });
+      }
+    }
+  }
+}
+
 function allNonJudgePicked(room) {
   const judgeId = getCurrentJudgeId(room);
   const nonJudge = Array.from(room.players.entries()).filter(([id]) => id !== judgeId);
@@ -287,8 +427,12 @@ function emitStartError(room, error) {
 }
 
 function startRound(room, roomCode) {
-  room.promptIndex = pickPrompt(room.promptIndex ?? undefined);
+  const previousPromptIndex = room.promptIndex;
+  room.promptIndex = pickPrompt(previousPromptIndex != null ? new Set([previousPromptIndex]) : undefined);
   room.prompt = PROMPTS[room.promptIndex];
+  // Tracks every prompt shown so far THIS round (reset fresh each round) so a shuffle
+  // never repeats one already seen since the round began.
+  room.seenPromptIndexes = new Set([room.promptIndex]);
   room.phase = 'picking';
   room.reveal = null;
   for (const p of room.players.values()) {
@@ -322,6 +466,16 @@ function advanceRoundOrEndGame(room, roomCode) {
   }
 }
 
+// Forcibly ends the game right now, whatever phase it's in — used by the host's "End Game"
+// button. Mirrors the natural end-of-game path (same event, same scoreboard), just triggered
+// manually instead of by finishing the last round.
+function endGameNow(room, roomCode) {
+  if (room.reveal?.advanceTimer) clearTimeout(room.reveal.advanceTimer);
+  room.phase = 'game-over';
+  room.reveal = null;
+  io.to(roomCode).emit('room:game-over', { scoreboard: buildScoreboard(room) });
+}
+
 io.on('connection', (socket) => {
 
   // ---- Host creates a room (TV device — the only device that can start/restart the game) ----
@@ -329,6 +483,7 @@ io.on('connection', (socket) => {
     const code = makeRoomCode();
     rooms.set(code, {
       hostSocketId: socket.id,
+      hostDisconnectTimer: null,
       phase: 'lobby',
       prompt: null,
       promptIndex: null,
@@ -345,13 +500,33 @@ io.on('connection', (socket) => {
     ack?.({ ok: true, code, joinBaseUrl: getJoinBaseUrl(socket) });
   });
 
+  // ---- Host reconnects to a room it already created (network drop, refresh, or the
+  // browser tab having been fully reloaded after being backgrounded for a while) ----
+  socket.on('host:resume-room', ({ code }, ack) => {
+    const roomCode = (code || '').trim().toUpperCase();
+    const room = rooms.get(roomCode);
+    if (!room) return ack?.({ ok: false });
+
+    if (room.hostDisconnectTimer) {
+      clearTimeout(room.hostDisconnectTimer);
+      room.hostDisconnectTimer = null;
+    }
+    room.hostSocketId = socket.id;
+    socket.join(roomCode);
+    socket.data.roomCode = roomCode;
+    socket.data.role = 'host';
+
+    ack?.({ ok: true, code: roomCode, joinBaseUrl: getJoinBaseUrl(socket) });
+    sendHostCatchUpState(socket, room);
+  });
+
   // ---- Player joins a room ----
   socket.on('player:join', ({ code, name }, ack) => {
     const roomCode = (code || '').trim().toUpperCase();
     const room = rooms.get(roomCode);
     if (!room) return ack?.({ ok: false, error: 'Room not found. Check the code.' });
 
-    const cleanName = (name || '').trim().slice(0, 20) || 'Player';
+    const cleanName = (name || '').trim().slice(0, 16) || 'Player';
 
     // Reconnection: if this name matches a player who disconnected mid-game, reclaim their
     // existing slot (score, current pick, judge rotation position all preserved) instead of
@@ -431,6 +606,15 @@ io.on('connection', (socket) => {
     startRound(room, roomCode);
   });
 
+  // ---- Host force-ends the current game at any point, jumping straight to final scores ----
+  socket.on('host:end-game', () => {
+    const roomCode = socket.data.roomCode;
+    const room = rooms.get(roomCode);
+    if (!room || !room.gameStarted || room.phase === 'game-over') return;
+    if (socket.id !== room.hostSocketId) return;
+    endGameNow(room, roomCode);
+  });
+
   // ---- Host restarts with fresh scores after game-over ----
   socket.on('play-again', ({ turnsPerPlayer } = {}) => {
     const roomCode = socket.data.roomCode;
@@ -450,6 +634,73 @@ io.on('connection', (socket) => {
     room.gameStarted = true;
     io.to(roomCode).emit('room:play-again-sound');
     startRound(room, roomCode);
+  });
+
+  // ---- Host returns to the lobby from final scores, without starting a new round —
+  // players stay joined (no need to rescan/rejoin), scores reset, ready to configure and
+  // start whenever the host is ready ----
+  socket.on('host:back-to-lobby', () => {
+    const oldCode = socket.data.roomCode;
+    const room = rooms.get(oldCode);
+    if (!room || room.phase !== 'game-over') return;
+    if (socket.id !== room.hostSocketId) return;
+
+    for (const p of room.players.values()) p.score = 0;
+    room.phase = 'lobby';
+    room.gameStarted = false;
+    room.currentRoundNumber = 0;
+    room.totalRounds = 0;
+    room.playerOrderSnapshot = [];
+    room.reveal = null;
+    room.promptIndex = null;
+    room.prompt = null;
+    room.seenPromptIndexes = undefined;
+
+    // Generate a fresh room code (and QR) for the new lobby, moving the host and every
+    // currently-connected player over to it — same room/players, new code to join by.
+    const newCode = makeRoomCode();
+    rooms.delete(oldCode);
+    rooms.set(newCode, room);
+
+    socket.leave(oldCode);
+    socket.join(newCode);
+    socket.data.roomCode = newCode;
+
+    for (const playerId of room.players.keys()) {
+      const playerSocket = io.sockets.sockets.get(playerId);
+      if (playerSocket) {
+        playerSocket.leave(oldCode);
+        playerSocket.join(newCode);
+        playerSocket.data.roomCode = newCode;
+      }
+    }
+
+    io.to(newCode).emit('room:back-to-lobby', {
+      code: newCode,
+      joinBaseUrl: getJoinBaseUrl(socket),
+      players: playerListPayload(room)
+    });
+  });
+
+  // ---- Host removes a player from the lobby (e.g. someone from the last game who isn't
+  // playing this round) — only while still in the lobby, since removing someone mid-game
+  // would break the judge rotation and any in-progress picks ----
+  socket.on('host:remove-player', ({ playerId }) => {
+    const roomCode = socket.data.roomCode;
+    const room = rooms.get(roomCode);
+    if (!room || room.gameStarted) return;
+    if (socket.id !== room.hostSocketId) return;
+    if (!room.players.has(playerId)) return;
+
+    room.players.delete(playerId);
+    // If they still happen to have a live connection (rare, but possible), disconnect them
+    // outright so they can't keep interacting with a room they've been removed from.
+    const playerSocket = io.sockets.sockets.get(playerId);
+    if (playerSocket) {
+      playerSocket.emit('room:removed-by-host');
+      playerSocket.disconnect(true);
+    }
+    io.to(roomCode).emit('room:players-updated', playerListPayload(room));
   });
 
   // ---- Non-judge player submits/updates their pick ----
@@ -485,8 +736,9 @@ io.on('connection', (socket) => {
     if (!room || room.phase !== 'picking') return;
     if (socket.id !== getCurrentJudgeId(room)) return;
 
-    room.promptIndex = pickPrompt(room.promptIndex);
+    room.promptIndex = pickPrompt(room.seenPromptIndexes);
     room.prompt = PROMPTS[room.promptIndex];
+    room.seenPromptIndexes.add(room.promptIndex);
     for (const p of room.players.values()) {
       p.pick = null;
       p.hasPicked = false;
@@ -645,8 +897,14 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     if (socket.data.role === 'host') {
-      io.to(roomCode).emit('room:host-left');
-      rooms.delete(roomCode);
+      // Give the host a window to reconnect (network drop, accidental refresh, laptop
+      // sleep, or a mobile browser reloading the tab) before actually ending the game —
+      // only if they never come back within this window does everyone get notified.
+      room.hostSocketId = null;
+      room.hostDisconnectTimer = setTimeout(() => {
+        io.to(roomCode).emit('room:host-left');
+        rooms.delete(roomCode);
+      }, 10 * 60 * 1000); // 10 minutes
       return;
     }
 

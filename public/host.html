@@ -44,13 +44,52 @@
     display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 2cqw;
     transition: margin-top 0.2s ease;
   }
-  .header-side { flex-shrink: 0; width: 15cqw; min-width: 105px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .header-side { flex-shrink: 0; width: 15cqw; min-width: 190px; display: flex; flex-direction: column; align-items: center; text-align: center; }
   .header-center { flex: 1; text-align: center; }
   .mini-code-label { font-size: 0.9cqmin; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 600; }
-  .mini-code { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 3.8cqmin; letter-spacing: 0.1em; color: var(--gold); }
+  .mini-code { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 6.5cqmin; letter-spacing: 0.1em; color: var(--gold); }
+  /* Shrink back down specifically while a YouTube video is actively playing, matching the
+     same exception already applied to the QR code — every other screen keeps the bigger size. */
+  .tv-frame.video-focus:not(.cover-showing) .mini-code { font-size: 3.8cqmin; }
   #qrcode { background: #fff; padding: 4px; border-radius: 0.6cqmin; line-height: 0; }
-  #qrcode img, #qrcode canvas { width: 102px !important; height: 102px !important; }
+  #qrcode img, #qrcode canvas { width: 180px !important; height: 180px !important; }
+  /* Shrink back down specifically while a YouTube video is actively playing — every other
+     screen (lobby, picking, choosing, final scores, and even a YouTube pick's thumbnail
+     before play is pressed) keeps the bigger size. */
+  .tv-frame.video-focus:not(.cover-showing) #qrcode img,
+  .tv-frame.video-focus:not(.cover-showing) #qrcode canvas { width: 102px !important; height: 102px !important; }
   .qr-unavailable { font-size: 0.7cqmin; color: var(--muted); }
+  #end-game-btn {
+    position: fixed; bottom: 2cqh; right: 2cqw; z-index: 500;
+    background: #302b4a; color: var(--text); border: none; border-radius: 999px;
+    padding: 1.8cqh 3.3cqw; font-size: 1.95cqmin; font-weight: 700; cursor: pointer;
+    font-family: 'Fredoka', sans-serif;
+  }
+  #end-game-btn.confirm-armed { background: #ff8a3d; color: #201827; }
+  /* Nothing to end while still in the lobby, final scores, or the very first start screen */
+  .tv-frame:has(#lobby-view:not(.hidden)) #end-game-btn,
+  .tv-frame:has(#gameover-view:not(.hidden)) #end-game-btn,
+  .tv-frame:has(#start-view:not(.hidden)) #end-game-btn { display: none; }
+  /* Full-screen splash shown before anything else — its Play button is what satisfies the
+     browser's autoplay requirement so background music can start immediately, since there's
+     no guarantee any other click happens this early (unlike "Start game", which is guaranteed
+     to be clicked, this needs its own explicit gesture right at the very beginning). */
+  #start-view {
+    position: fixed; inset: 0; z-index: 900;
+    background:
+      radial-gradient(circle at 15% -10%, rgba(255,61,154,0.25), transparent 45%),
+      radial-gradient(circle at 90% 10%, rgba(124,77,255,0.28), transparent 50%),
+      radial-gradient(circle at 50% 100%, rgba(255,217,74,0.10), transparent 55%),
+      var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  #start-view.hidden { display: none; }
+  #start-play-btn {
+    width: auto; padding: 1.8cqh 5cqw; font-size: 2.8cqmin; margin-top: 3cqh;
+    font-family: 'Fredoka', sans-serif; color: #fff;
+    display: inline-flex; align-items: center; gap: 0.8cqw;
+  }
+  #start-play-btn svg { width: 1.6em; height: 1.6em; flex-shrink: 0; }
   /* The lobby has its own big, dedicated room code + QR display below — hide the header's
      copy there so it isn't shown twice; every other screen shows the header version. */
   .tv-frame:has(#lobby-view:not(.hidden)) .header-side { display: none; }
@@ -89,10 +128,12 @@
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.045); }
   }
-  /* Gentle pulse on the title only while waiting in the lobby or admiring the final scores —
-     not during active gameplay, where it would just be a distraction. */
+  /* Gentle pulse on the title only while waiting in the lobby, admiring the final scores, or
+     sitting on the very first start screen — not during active gameplay, where it would
+     just be a distraction. */
   .tv-frame:has(#lobby-view:not(.hidden)) h1,
-  .tv-frame:has(#gameover-view:not(.hidden)) h1 {
+  .tv-frame:has(#gameover-view:not(.hidden)) h1,
+  #start-view h1 {
     display: inline-block;
     animation: titlePulse 2.2s ease-in-out infinite;
   }
@@ -117,19 +158,26 @@
   }
   .prompt-box {
     padding: 0.6cqh 200px; margin: 20px auto 2cqh;
-    font-size: 3cqmin; font-weight: 700; max-width: 92cqw;
+    font-size: 4cqmin; font-weight: 700; max-width: 92cqw;
   }
   .prompt-box .prompt-label { display: block; font-size: 1.5cqmin; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.9cqh; }
   .players { display: flex; flex-wrap: wrap; gap: 1.4cqmin; justify-content: center; margin: 2cqh 0; max-height: 20cqh; overflow-y: auto; }
   .player-chip {
     background: var(--panel); border: 2px solid #3c3560; border-radius: 999px;
     padding: 1.2cqh 2.4cqw; font-size: 2cqmin; font-weight: 700; display: flex; align-items: center; gap: 0.9cqmin;
+    min-width: 26cqw;
   }
   .player-chip .dot { width: 1cqmin; height: 1cqmin; border-radius: 50%; background: #5a5382; }
   .player-chip.picked { background: rgba(74, 222, 128, 0.18); border-color: #4ade80; }
   .player-chip.picked .dot { background: #4ade80; box-shadow: 0 0 0.9cqmin #4ade80; }
   .player-chip.judge { background: rgba(74, 222, 128, 0.18); border-color: #4ade80; }
   .player-chip.disconnected { opacity: 0.5; font-style: italic; }
+  .remove-player-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 1.4cqmin; padding: 0 0.3cqw; margin-left: auto; line-height: 1;
+    display: flex; align-items: center; font-family: inherit; font-weight: inherit;
+  }
+  .remove-player-btn:hover { color: #ff8a9c; }
   button {
     border: none; border-radius: 1.5cqmin; padding: 1.9cqh 3cqw; font-weight: 700;
     font-size: 2.05cqmin; cursor: pointer; margin: 0.7cqmin;
@@ -174,7 +222,7 @@
 
   /* Choosing screen: title stays shrunk, but round/judge/prompt come back — compactly,
      so they don't crowd out the submissions grid below them. */
-  #game-view.choosing-chrome .prompt-box { font-size: 3cqmin; padding: 0.4cqh 200px; margin: 20px auto 1.2cqh; max-width: 88cqw; }
+  #game-view.choosing-chrome .prompt-box { font-size: 4cqmin; padding: 0.4cqh 200px; margin: 20px auto 1.2cqh; max-width: 88cqw; }
   #game-view.choosing-chrome .prompt-box .prompt-label { font-size: 1.1cqmin; margin-bottom: 0.5cqh; }
 
   .reveal-list { display: flex; flex-direction: column; gap: 1.2cqh; text-align: left; margin-top: 2cqh; max-width: 72cqw; margin-left: auto; margin-right: auto; max-height: 55cqh; overflow-y: auto; }
@@ -232,6 +280,14 @@
 </head>
 <body>
 <div class="tv-frame">
+<div id="start-view">
+  <div class="logo-mark">🎧</div>
+  <h1>Queue It Up!</h1>
+  <button class="primary" id="start-play-btn">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M6 4 L20 12 L6 20 Z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+    Play
+  </button>
+</div>
 <div class="header-row">
   <div class="header-side">
     <div class="mini-code-label">Room Code</div>
@@ -246,6 +302,7 @@
     <div class="qr-unavailable hidden" id="qr-unavailable">No QR — use the code</div>
   </div>
 </div>
+<button id="end-game-btn">End Game</button>
 <div class="wrap">
   <div id="lobby-view">
     <div class="lobby-top-row">
@@ -311,7 +368,8 @@
       <label><input type="radio" name="rounds-again" value="2" checked> 2</label>
       <label><input type="radio" name="rounds-again" value="3"> 3</label>
     </div>
-    <button class="primary" id="play-again-btn">Play again?</button>
+    <button class="primary" id="play-again-btn">Play again</button>
+    <button class="secondary" id="back-to-lobby-btn">Back to lobby</button>
     <div class="error-text" id="gameover-error"></div>
   </div>
 </div>
@@ -322,6 +380,11 @@
 <script>
   const socket = io();
   const audio = new Audio();
+  // iTunes preview files tend to be mastered noticeably louder than typical YouTube audio —
+  // there's no way to fix the source files themselves, so this brings iTunes playback down
+  // to a level that better matches YouTube's, rather than one consistently overpowering
+  // the other depending on which type of pick is currently playing.
+  audio.volume = 0.6;
 
   // ---- Sound effects, synthesized with the Web Audio API (no external files needed) ----
   let audioCtx = null;
@@ -330,7 +393,14 @@
     if (audioCtx.state === 'suspended') audioCtx.resume();
     return audioCtx;
   }
-  document.addEventListener('click', () => { try { getAudioCtx(); } catch (e) {} }, { once: true });
+  document.getElementById('start-play-btn').addEventListener('click', () => {
+    try { getAudioCtx(); } catch (e) {}
+    startBgMusic();
+    document.getElementById('start-view').classList.add('hidden');
+    // Whatever screen is actually correct underneath (fresh lobby, or a resumed game already
+    // mid-round/reveal/final-scores via the catch-up events) is already showing by now —
+    // this button just needs to reveal it, not decide which one that is.
+  });
 
   function playTone(freq, startTime, duration, type, gainPeak) {
     const ctx = getAudioCtx();
@@ -396,11 +466,42 @@
     newPrompt: new Audio('/sounds/new-prompt.mp3'),
     winnerChosen: new Audio('/sounds/winner-chosen.mp3')
   };
+  sfxFiles.newPrompt.volume = 0.7; // 30% quieter than the default full volume
   function playSfxFile(name) {
     const audio = sfxFiles[name];
     if (!audio) return;
     audio.currentTime = 0;
     audio.play().catch(() => {}); // ignore if it can't play yet (e.g. before the unlock click)
+  }
+
+  // ---- Background music during picking ----
+  // Plays while players are choosing songs, stops the instant the judge reveals picks, and
+  // resumes for the next round — cycling through the playlist rather than restarting from the
+  // first track every round, so a longer game works its way through all five over time.
+  const bgMusicTracks = [
+    '/music/lofi-podcast.mp3',
+    '/music/lofi-study.mp3',
+    '/music/lofi-lounge.mp3',
+    '/music/lofi-reel.mp3',
+    '/music/lofi-loop.mp3'
+  ];
+  let bgMusicIndex = 0;
+  const bgMusicAudio = new Audio();
+  bgMusicAudio.volume = 0.3;
+  bgMusicAudio.addEventListener('ended', () => {
+    bgMusicIndex = (bgMusicIndex + 1) % bgMusicTracks.length;
+    playCurrentBgTrack();
+  });
+  function playCurrentBgTrack() {
+    bgMusicAudio.src = bgMusicTracks[bgMusicIndex];
+    bgMusicAudio.play().catch(() => {});
+  }
+  function startBgMusic() {
+    if (!bgMusicAudio.paused) return; // already playing — don't restart it from the beginning
+    playCurrentBgTrack();
+  }
+  function stopBgMusic() {
+    bgMusicAudio.pause();
   }
 
   const sfx = {
@@ -475,6 +576,7 @@
       events: {
         onReady: () => {
           ytReady = true;
+          ytPlayer.setVolume(100); // explicit, so it's a known, matched baseline against the iTunes side
           console.log('[YouTube] Player ready.');
           if (onReadyCallback) onReadyCallback();
         },
@@ -541,6 +643,7 @@
   const gameoverView = document.getElementById('gameover-view');
   const finalScoreboardEl = document.getElementById('final-scoreboard');
   const playAgainBtn = document.getElementById('play-again-btn');
+  const backToLobbyBtn = document.getElementById('back-to-lobby-btn');
   const gameoverErrorEl = document.getElementById('gameover-error');
 
   let currentPhase = 'lobby';
@@ -549,17 +652,29 @@
   let revealSubPhase = null; // 'sequential' | 'choosing'
   let currentRevealIndex = 0;
 
-  socket.emit('host:create-room', {}, (res) => {
-    if (!res.ok) return;
+  // Remembers this room's code across a page reload — needed because a mobile browser (or
+  // just an accidental refresh) can fully reload the host screen mid-game, and without this
+  // there'd be no way to get back into the same room; the server would just start a new one.
+  const HOST_ROOM_KEY = 'queueItUp.hostRoomCode';
+  function saveHostRoomCode(code) {
+    try { localStorage.setItem(HOST_ROOM_KEY, code); } catch (e) {}
+  }
+  function loadHostRoomCode() {
+    try { return localStorage.getItem(HOST_ROOM_KEY); } catch (e) { return null; }
+  }
+
+  function applyRoomCodeAndQr(res) {
     roomCodeEl.textContent = res.code;
     roomCodeLobbyEl.textContent = res.code;
+    document.getElementById('qrcode').innerHTML = '';
+    document.getElementById('qrcode-lobby').innerHTML = '';
 
     if (res.joinBaseUrl) {
       const joinUrl = `${res.joinBaseUrl}/?code=${res.code}`;
       new QRCode(document.getElementById('qrcode'), {
         text: joinUrl,
-        width: 102,
-        height: 102,
+        width: 180,
+        height: 180,
         colorDark: '#14121f',
         colorLight: '#ffffff'
       });
@@ -576,7 +691,31 @@
       document.getElementById('lobby-qr-section').classList.add('hidden');
       document.getElementById('lobby-qr-unavailable').classList.remove('hidden');
     }
-  });
+  }
+
+  function createFreshRoom() {
+    socket.emit('host:create-room', {}, (res) => {
+      if (!res.ok) return;
+      saveHostRoomCode(res.code);
+      applyRoomCodeAndQr(res);
+    });
+  }
+
+  const savedRoomCode = loadHostRoomCode();
+  if (savedRoomCode) {
+    socket.emit('host:resume-room', { code: savedRoomCode }, (res) => {
+      if (res.ok) {
+        applyRoomCodeAndQr(res);
+        // Any in-progress state (round, reveal, scores) arrives right after via the same
+        // events a normal game already uses — no separate "resumed" handling needed.
+      } else {
+        // That room's gone (server restarted, or it was never actually created) — start fresh.
+        createFreshRoom();
+      }
+    });
+  } else {
+    createFreshRoom();
+  }
 
   startGameBtn.addEventListener('click', () => {
     getAudioCtx();
@@ -585,6 +724,29 @@
     socket.emit('start-game', { turnsPerPlayer: Number(turns) });
   });
 
+  // Two-tap inline confirmation (no browser popup), matching the judge's "New prompt" pattern.
+  let endGameArmed = false;
+  let endGameResetTimer = null;
+  const endGameBtn = document.getElementById('end-game-btn');
+  endGameBtn.addEventListener('click', () => {
+    if (!endGameArmed) {
+      endGameArmed = true;
+      endGameBtn.textContent = 'Tap again to confirm';
+      endGameBtn.classList.add('confirm-armed');
+      clearTimeout(endGameResetTimer);
+      endGameResetTimer = setTimeout(resetEndGameBtn, 3000);
+      return;
+    }
+    resetEndGameBtn();
+    socket.emit('host:end-game');
+  });
+  function resetEndGameBtn() {
+    endGameArmed = false;
+    clearTimeout(endGameResetTimer);
+    endGameBtn.textContent = 'End Game';
+    endGameBtn.classList.remove('confirm-armed');
+  }
+
   playAgainBtn.addEventListener('click', () => {
     getAudioCtx();
     gameoverErrorEl.textContent = '';
@@ -592,12 +754,30 @@
     socket.emit('play-again', { turnsPerPlayer: Number(turns) });
   });
 
+  backToLobbyBtn.addEventListener('click', () => {
+    getAudioCtx();
+    socket.emit('host:back-to-lobby');
+  });
+
+  socket.on('room:back-to-lobby', ({ code, joinBaseUrl, players }) => {
+    gameStarted = false; // was stuck true from the previous game, which kept re-disabling
+                         // the Start button every time the player list re-rendered
+    startBgMusic();
+    gameView.classList.add('hidden');
+    gameoverView.classList.add('hidden');
+    lobbyView.classList.remove('hidden');
+    saveHostRoomCode(code);
+    applyRoomCodeAndQr({ code, joinBaseUrl });
+    renderPlayerChips(lobbyPlayersListEl, players, false, true);
+    startGameBtn.disabled = players.length < 3;
+  });
+
   socket.on('room:start-game-error', ({ error }) => {
     lobbyErrorEl.textContent = error;
     gameoverErrorEl.textContent = error;
   });
 
-  function renderPlayerChips(container, players, showScore) {
+  function renderPlayerChips(container, players, showScore, showRemoveBtn) {
     container.innerHTML = '';
     if (!players.length) {
       container.innerHTML = '<span style="color:var(--muted)">Waiting for players to join…</span>';
@@ -607,14 +787,22 @@
       const chip = document.createElement('div');
       chip.className = 'player-chip' + (p.hasPicked ? ' picked' : '') + (p.isJudge ? ' judge' : '') + (p.connected === false ? ' disconnected' : '');
       const label = escapeHtml(p.name) + (showScore ? ` · ${p.score} pts` : '') + (p.connected === false ? ' (reconnecting…)' : '');
-      chip.innerHTML = `<span class="dot"></span> ${label}`;
+      const removeBtn = showRemoveBtn ? `<button class="remove-player-btn" data-player-id="${p.id}" title="Remove ${escapeHtml(p.name)}">✕</button>` : '';
+      chip.innerHTML = `<span class="dot"></span> ${label}${removeBtn}`;
       container.appendChild(chip);
     });
+    if (showRemoveBtn) {
+      container.querySelectorAll('.remove-player-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          socket.emit('host:remove-player', { playerId: btn.dataset.playerId });
+        });
+      });
+    }
   }
 
   socket.on('room:players-updated', (players) => {
-    renderPlayerChips(lobbyPlayersListEl, players, false);
-    renderPlayerChips(arenaPlayersListEl, players, true);
+    renderPlayerChips(lobbyPlayersListEl, players, false, true);
+    renderPlayerChips(arenaPlayersListEl, players, true, false);
     startGameBtn.disabled = players.length < 3 || gameStarted;
 
     if (gameStarted && currentPhase === 'picking') {
@@ -655,6 +843,7 @@
     revealListEl.innerHTML = '';
     pickingStatusEl.textContent = '';
     stopAllPlayback();
+    startBgMusic();
   });
 
   socket.on('room:next-round-sound', () => {
@@ -673,6 +862,7 @@
   socket.on('room:reveal', ({ picks, revealIndex, subPhase }) => {
     currentPhase = 'reveal';
     pickingStatusEl.textContent = '';
+    stopBgMusic();
     revealPicks = picks;
     revealSubPhase = subPhase;
     currentRevealIndex = revealIndex;
@@ -822,6 +1012,7 @@
 
   socket.on('room:game-over', ({ scoreboard }) => {
     stopAllPlayback();
+    startBgMusic();
     exitSequentialFocus();
     gameView.classList.add('hidden');
     gameoverView.classList.remove('hidden');

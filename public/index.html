@@ -16,7 +16,7 @@
   body {
     margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: radial-gradient(circle at top, #241f3a, var(--bg));
-    color: var(--text); min-height: 100vh; padding: 24px 16px 90px;
+    color: var(--text); min-height: 100vh; padding: 24px 16px 90px; font-size: 19px;
   }
   .wrap { max-width: 480px; margin: 0 auto; }
   h1 {
@@ -40,6 +40,7 @@
   .primary { background: var(--accent); color: #201827; box-shadow: 0 4px 16px rgba(255,61,154,0.35); }
   .primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
   .secondary { background: #302b4a; color: var(--text); }
+  #yt-search-submit-btn { background: var(--accent); color: #201827; }
   .secondary.confirm-armed { background: #ff8a3d; color: #201827; }
   .error { color: #ff8a9c; font-size: 0.85rem; margin-top: 6px; min-height: 1.2em; }
 
@@ -50,10 +51,10 @@
   }
   .prompt-box {
     background: linear-gradient(135deg, var(--accent-2), var(--accent));
-    border-radius: 14px; padding: 16px 18px; margin: 10px 0 16px; font-size: 1.05rem; font-weight: 600;
+    border-radius: 14px; padding: 16px 18px; margin: 10px 0 16px; font-size: 1.3rem; font-weight: 600;
     box-shadow: 0 0 30px rgba(255, 61, 154, 0.2);
   }
-  .prompt-box span { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85; margin-bottom: 4px; }
+  .prompt-box .prompt-label { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85; margin-bottom: 4px; }
 
   .mode-toggle { display: flex; gap: 8px; margin: 14px 0; }
   .mode-btn {
@@ -160,7 +161,7 @@
   <h1>🎧 Queue It Up!</h1>
 
   <div id="join-view" class="card">
-    <input type="text" id="name-input" placeholder="Your name" maxlength="20" />
+    <input type="text" id="name-input" placeholder="Your name" maxlength="16" />
     <input type="text" id="code-input" class="code-input" placeholder="ROOM CODE" maxlength="4" />
     <button class="primary" id="join-btn">Join room</button>
     <div class="error" id="join-error"></div>
@@ -174,22 +175,22 @@
     <div class="round-header" id="round-label"></div>
     <div class="judge-banner" id="judge-banner"></div>
     <div class="prompt-box">
-      <span>Prompt</span>
+      <span class="prompt-label">Prompt</span>
       <span id="prompt-text"></span>
     </div>
 
     <!-- Non-judge: search + pick -->
     <div id="picker-panel">
       <div class="mode-toggle">
-        <button type="button" class="mode-btn active" id="mode-btn-youtube" data-mode="youtube">Choose starting timestamp</button>
-        <button type="button" class="mode-btn" id="mode-btn-itunes" data-mode="itunes">Default timestamp</button>
+        <button type="button" class="mode-btn active" id="mode-btn-itunes" data-mode="itunes">iTunes preview</button>
+        <button type="button" class="mode-btn" id="mode-btn-youtube" data-mode="youtube">YouTube video</button>
       </div>
 
-      <!-- YouTube mode: pick a video and an exact start point (default, leftmost) -->
-      <div id="youtube-mode-panel">
+      <!-- YouTube mode: pick a video and an exact start point -->
+      <div id="youtube-mode-panel" class="hidden">
         <form class="search-form" id="yt-search-form">
           <input type="text" id="yt-search-input" placeholder="Search YouTube for a song…" autocomplete="off" />
-          <button type="submit" class="secondary">Search</button>
+          <button type="submit" id="yt-search-submit-btn">Search</button>
         </form>
         <div class="results" id="yt-results"></div>
 
@@ -205,11 +206,11 @@
         </div>
       </div>
 
-      <!-- iTunes mode: standard 30s preview, whatever moment iTunes chose -->
-      <div id="itunes-mode-panel" class="hidden">
+      <!-- iTunes mode: standard 30s preview, whatever moment iTunes chose (now the default) -->
+      <div id="itunes-mode-panel">
         <form class="search-form" id="search-form">
           <input type="text" id="search-input" placeholder="Search a song or artist…" autocomplete="off" />
-          <button type="submit" class="primary">Go</button>
+          <button type="submit" class="primary">Search</button>
         </form>
         <div class="status" id="status"></div>
         <div class="results" id="results"></div>
@@ -378,7 +379,7 @@
   let roundInfo = null;
   let currentPhase = 'lobby';
   let currentPlayingPreviewId = null;
-  let pickMode = 'youtube'; // "Choose starting timestamp" is the default mode
+  let pickMode = 'itunes'; // "iTunes preview" is the default mode
   let selectedYoutubeVideo = null;
 
   let revealPicks = [];
@@ -403,14 +404,41 @@
     codeInput.value = codeFromUrl.toUpperCase().slice(0, 4);
     if (savedJoin?.name) nameInput.value = savedJoin.name;
     nameInput.focus();
-  } else if (savedJoin) {
-    nameInput.value = savedJoin.name || '';
-    codeInput.value = savedJoin.code || '';
   }
 
   // Tracks whether we've successfully joined a room THIS page load — used to tell "fresh
   // page load, haven't joined yet" apart from "already playing, connection just blipped."
   let currentSession = null; // { name, code } once joined
+
+  // Shared by the manual "Join room" button AND the automatic-rejoin-on-load path below.
+  // silent=true means this is an automatic attempt (page just loaded) rather than something
+  // the player typed and clicked themselves — it shows a "Reconnecting…" state instead of
+  // an error the instant it fails, since failing quietly and falling back to the normal
+  // join screen is much less alarming than an error message on a page they didn't touch yet.
+  function attemptJoin(name, code, silent) {
+    if (silent) {
+      joinView.classList.add('hidden');
+      lobbyWaitView.classList.remove('hidden');
+      lobbyWaitView.querySelector('p').textContent = 'Reconnecting…';
+    }
+    socket.emit('player:join', { name, code }, (res) => {
+      if (!res.ok) {
+        joinView.classList.remove('hidden');
+        lobbyWaitView.classList.add('hidden');
+        nameInput.value = name;
+        codeInput.value = code;
+        joinError.textContent = res.error;
+        return;
+      }
+      currentSession = { name, code };
+      saveJoinInfo(name, code);
+      joinView.classList.add('hidden');
+      lobbyWaitView.classList.remove('hidden');
+      lobbyWaitView.querySelector('p').textContent = res.reconnected
+        ? "Welcome back! Reconnecting you to the game…"
+        : "You're in! Waiting for the game to start…";
+    });
+  }
 
   joinBtn.addEventListener('click', () => {
     const name = nameInput.value.trim();
@@ -419,20 +447,20 @@
       joinError.textContent = 'Enter your name and the room code.';
       return;
     }
-    socket.emit('player:join', { name, code }, (res) => {
-      if (!res.ok) {
-        joinError.textContent = res.error;
-        return;
-      }
-      currentSession = { name, code };
-      saveJoinInfo(name, code);
-      joinView.classList.add('hidden');
-      lobbyWaitView.classList.remove('hidden');
-      if (res.reconnected) {
-        lobbyWaitView.querySelector('p').textContent = "Welcome back! Reconnecting you to the game…";
-      }
-    });
+    attemptJoin(name, code, false);
   });
+
+  // Automatically rejoin on a fresh page load if we have saved credentials from earlier —
+  // this is what actually matters for mobile: locking the screen for more than a few
+  // seconds often makes the browser fully reload the tab, wiping the in-memory session the
+  // live-reconnect handler below depends on. Without this, the player would land back on
+  // a blank join screen and have to notice and manually tap "Join" again to get back in —
+  // easy to miss, which is exactly what made this feel like getting "booted" so often.
+  // Skipped if a QR code was just scanned, since that's a deliberate signal to join
+  // (possibly a different) room manually rather than resume a stale saved session.
+  if (!codeFromUrl && savedJoin && savedJoin.name && savedJoin.code) {
+    attemptJoin(savedJoin.name, savedJoin.code, true);
+  }
 
   // Socket.io reconnects the underlying network connection automatically after a brief drop
   // (very common on mobile — screen lock, app switching, WiFi/cellular handoff) — but that
@@ -542,7 +570,7 @@
   });
 
   function resetPickerForNewPrompt() {
-    setPickMode('youtube');
+    setPickMode('itunes');
     pickSubmittedView.classList.add('hidden');
     pickerPanel.classList.remove('hidden');
 
@@ -983,8 +1011,28 @@
     });
   });
 
+  socket.on('room:back-to-lobby', ({ code } = {}) => {
+    gameView.classList.add('hidden');
+    gameoverView.classList.add('hidden');
+    lobbyWaitView.classList.remove('hidden');
+    lobbyWaitView.querySelector('p').textContent = "You're in! Waiting for the game to start…";
+    // The room code changed along with going back to lobby — keep our saved reconnect
+    // info (and the live in-memory session) pointing at the new one, or a later dropped
+    // connection would try to rejoin using a code that no longer exists.
+    if (code && currentSession) {
+      currentSession = { ...currentSession, code };
+      saveJoinInfo(currentSession.name, code);
+    }
+  });
+
   socket.on('room:host-left', () => {
     alert('The host ended the game.');
+  });
+
+  socket.on('room:removed-by-host', () => {
+    currentSession = null; // don't try to auto-rejoin a room we were just removed from
+    try { localStorage.removeItem(SAVED_JOIN_KEY); } catch (e) {}
+    alert("The host removed you from this game.");
   });
 
   function escapeHtml(str) {
