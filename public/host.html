@@ -611,6 +611,17 @@
     }
   });
 
+  // Safety net alongside the normal push-based 'room:players-updated' broadcasts — actively
+  // re-fetch the current player list on a short interval so the display self-corrects within
+  // a few seconds if any single broadcast is ever missed, rather than staying stuck.
+  setInterval(() => {
+    socket.emit('host:request-players', {}, (res) => {
+      if (!res || !res.ok) return;
+      renderPlayerChips(lobbyPlayersListEl, res.players, false, true);
+      renderPlayerChips(arenaPlayersListEl, res.players, true);
+    });
+  }, 3000);
+
   // Two-tap inline confirmation (no browser popup) for the one control that stays on this screen.
   let endGameArmed = false;
   let endGameResetTimer = null;

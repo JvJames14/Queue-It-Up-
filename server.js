@@ -496,6 +496,17 @@ io.on('connection', (socket) => {
     sendHostCatchUpState(socket, room);
   });
 
+  // ---- Host actively polls the current player list as a safety net alongside the normal
+  // push-based 'room:players-updated' broadcasts, in case any single broadcast is missed for
+  // any reason (network hiccup, dropped packet, etc.) — this way the display self-corrects
+  // within a few seconds regardless of exactly why a specific update didn't land. ----
+  socket.on('host:request-players', (_data, ack) => {
+    const roomCode = socket.data.roomCode;
+    const room = rooms.get(roomCode);
+    if (!room) return ack?.({ ok: false });
+    ack?.({ ok: true, players: playerListPayload(room) });
+  });
+
   // ---- Player joins a room ----
   // The first 8 to join become "active" players (search + submit + vote); anyone after
   // that joins as an "audience" member (vote only, no submissions, no player cap). The
