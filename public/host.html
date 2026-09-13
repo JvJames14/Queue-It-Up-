@@ -25,9 +25,6 @@
     display: flex; align-items: center; justify-content: center;
   }
 
-  /* A 16:9 "TV screen" that always fits the viewport with no scrolling, letterboxed if needed.
-     Everything inside scales with container-query units (cqw/cqh/cqmin) relative to THIS box,
-     not the raw window — so it stays proportional at any window size or shape. */
   .tv-frame {
     width: min(100vw, 177.78vh);
     height: min(100vh, 56.25vw);
@@ -36,9 +33,6 @@
     display: flex; flex-direction: column; align-items: center;
     padding: 1.5cqh 2.5cqw;
   }
-  /* Pinned to the top always — doesn't move or resize as the content below it changes.
-     Room code and QR code flank the title so a disconnected player can always find them,
-     on every screen, not just the lobby. */
   .header-row {
     flex-shrink: 0; margin-top: 2.8cqh;
     display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 2cqw;
@@ -48,14 +42,9 @@
   .header-center { flex: 1; text-align: center; }
   .mini-code-label { font-size: 0.9cqmin; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 600; }
   .mini-code { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 6.5cqmin; letter-spacing: 0.1em; color: var(--gold); }
-  /* Shrink back down specifically while a YouTube video is actively playing, matching the
-     same exception already applied to the QR code — every other screen keeps the bigger size. */
   .tv-frame.video-focus:not(.cover-showing) .mini-code { font-size: 3.8cqmin; }
   #qrcode { background: #fff; padding: 4px; border-radius: 0.6cqmin; line-height: 0; }
   #qrcode img, #qrcode canvas { width: 180px !important; height: 180px !important; }
-  /* Shrink back down specifically while a YouTube video is actively playing — every other
-     screen (lobby, picking, choosing, final scores, and even a YouTube pick's thumbnail
-     before play is pressed) keeps the bigger size. */
   .tv-frame.video-focus:not(.cover-showing) #qrcode img,
   .tv-frame.video-focus:not(.cover-showing) #qrcode canvas { width: 102px !important; height: 102px !important; }
   .qr-unavailable { font-size: 0.7cqmin; color: var(--muted); }
@@ -66,14 +55,9 @@
     font-family: 'Fredoka', sans-serif;
   }
   #end-game-btn.confirm-armed { background: #ff8a3d; color: #201827; }
-  /* Nothing to end while still in the lobby, final scores, or the very first start screen */
   .tv-frame:has(#lobby-view:not(.hidden)) #end-game-btn,
   .tv-frame:has(#gameover-view:not(.hidden)) #end-game-btn,
   .tv-frame:has(#start-view:not(.hidden)) #end-game-btn { display: none; }
-  /* Full-screen splash shown before anything else — its Play button is what satisfies the
-     browser's autoplay requirement so background music can start immediately, since there's
-     no guarantee any other click happens this early (unlike "Start game", which is guaranteed
-     to be clicked, this needs its own explicit gesture right at the very beginning). */
   #start-view {
     position: fixed; inset: 0; z-index: 900;
     background:
@@ -90,27 +74,17 @@
     display: inline-flex; align-items: center; gap: 0.8cqw;
   }
   #start-play-btn svg { width: 1.6em; height: 1.6em; flex-shrink: 0; }
-  /* The lobby has its own big, dedicated room code + QR display below — hide the header's
-     copy there so it isn't shown twice; every other screen shows the header version. */
   .tv-frame:has(#lobby-view:not(.hidden)) .header-side { display: none; }
-  /* On the video page specifically, shrink the header and drop the extra top
-     margin so the video and song info underneath have room to fully show. */
   .tv-frame.video-focus .header-row { margin-top: 0.4cqh; }
   .tv-frame.video-focus .logo-mark { font-size: 6cqmin; margin-bottom: 0.2cqh; }
   .tv-frame.video-focus h1 { font-size: 2.6cqmin; margin: 0 0 0.4cqh; }
-  /* iTunes previews have no video to fill the screen — even with the larger cover art,
-     there's still empty space, so let the title grow to help fill it. */
   .tv-frame.video-focus.cover-showing h1 { font-size: 5.2cqmin; }
   .wrap {
     flex: 1; width: 100%; min-height: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; overflow: hidden;
   }
-  /* Winner-selection screen: anchor content to the top (right under the title) instead of
-     centering it, so the prompt sits close to the header rather than floating mid-screen. */
-  /* Picking screen (prompt + round/judge info, before reveal): anchor to the top too. */
   .wrap:has(#game-view:not(.hidden):not(.focus-mode)) { justify-content: flex-start; padding-top: 0; }
-  /* Winner-selection screen: same top-anchoring, with a bit more breathing room under the logo. */
   .wrap:has(#game-view.choosing-chrome) { justify-content: flex-start; padding-top: 0; }
 
   .logo-mark { font-size: 18cqmin; line-height: 1; margin-bottom: 0.8cqh; filter: drop-shadow(0 0 2.2cqmin rgba(255,61,154,0.4)); }
@@ -128,9 +102,6 @@
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.045); }
   }
-  /* Gentle pulse on the title only while waiting in the lobby, admiring the final scores, or
-     sitting on the very first start screen — not during active gameplay, where it would
-     just be a distraction. */
   .tv-frame:has(#lobby-view:not(.hidden)) h1,
   .tv-frame:has(#gameover-view:not(.hidden)) h1,
   #start-view h1 {
@@ -156,6 +127,10 @@
     background: rgba(255, 217, 74, 0.14); border: 2px solid var(--gold); color: var(--gold);
     border-radius: 999px; display: inline-block; padding: 1.2cqh 3cqw; font-size: 2cqmin; font-weight: 700; margin-bottom: 1.8cqh;
   }
+  .rounds-picker {
+    display: flex; align-items: center; justify-content: center; gap: 1.5cqmin;
+    margin: 2cqh 0 0.8cqh; font-size: 1.9cqmin; font-weight: 700; color: var(--muted);
+  }
   .prompt-box {
     padding: 0.6cqh 200px; margin: 20px auto 2cqh;
     font-size: 4cqmin; font-weight: 700; max-width: 92cqw;
@@ -170,7 +145,7 @@
   .player-chip .dot { width: 1cqmin; height: 1cqmin; border-radius: 50%; background: #5a5382; }
   .player-chip.picked { background: rgba(74, 222, 128, 0.18); border-color: #4ade80; }
   .player-chip.picked .dot { background: #4ade80; box-shadow: 0 0 0.9cqmin #4ade80; }
-  .player-chip.judge { background: rgba(74, 222, 128, 0.18); border-color: #4ade80; }
+  .player-chip.audience { opacity: 0.75; }
   .player-chip.disconnected { opacity: 0.5; font-style: italic; }
   .remove-player-btn {
     background: none; border: none; color: var(--muted); cursor: pointer;
@@ -186,17 +161,7 @@
   .primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
   .status { color: var(--muted); font-size: 2cqmin; margin: 1.5cqh 0; min-height: 1.2em; }
   .error-text { color: #ff8a9c; font-size: 1.75cqmin; min-height: 1.2em; }
-  .rounds-picker {
-    display: flex; align-items: center; justify-content: center; gap: 1.5cqmin;
-    margin: 2cqh 0 0.8cqh; font-size: 1.9cqmin; font-weight: 700; color: var(--muted);
-  }
-  .rounds-picker label {
-    background: var(--panel); border: 2px solid #3c3560; border-radius: 1.2cqmin;
-    padding: 1.05cqh 2.1cqw; cursor: pointer; display: flex; align-items: center; gap: 0.8cqmin;
-  }
-  .rounds-picker input { accent-color: var(--accent); transform: scale(1.2); }
 
-  /* Horizontal 16:9 video box, sized to 75% of the TV frame's width */
   .yt-video-wrap {
     position: relative; width: 75cqw; aspect-ratio: 16 / 9; margin: 1.5cqh auto;
     border-radius: 2cqmin; overflow: hidden; background: #000;
@@ -212,23 +177,17 @@
   .seq-card .title { font-size: 2.5cqmin; font-weight: 700; margin-top: 1.5cqh; }
   .seq-card .artist { color: var(--muted); font-size: 1.9cqmin; margin-top: 0.4cqh; }
 
-  /* Focus mode: while stepping through submissions one at a time, hide the picking-phase
-     chrome (round header, judge banner, prompt, player list) so the video/cover can dominate. */
   #game-view.focus-mode .seq-card img { width: 51cqmin; height: 51cqmin; }
   #game-view.focus-mode .seq-card img.cover-wide { width: 60cqmin; height: 34cqmin; }
   #game-view.focus-mode .seq-card .title { font-size: 3.4cqmin; }
   #game-view.focus-mode .seq-card .artist { font-size: 2.5cqmin; }
   #game-view.focus-mode .seq-progress { font-size: 2.4cqmin; }
 
-  /* Choosing screen: title stays shrunk, but round/judge/prompt come back — compactly,
-     so they don't crowd out the submissions grid below them. */
   #game-view.choosing-chrome .prompt-box { font-size: 4cqmin; padding: 0.4cqh 200px; margin: 20px auto 1.2cqh; max-width: 88cqw; }
   #game-view.choosing-chrome .prompt-box .prompt-label { font-size: 1.1cqmin; margin-bottom: 0.5cqh; }
 
   .reveal-list { display: flex; flex-direction: column; gap: 1.2cqh; text-align: left; margin-top: 2cqh; max-width: 72cqw; margin-left: auto; margin-right: auto; max-height: 55cqh; overflow-y: auto; }
 
-  /* More than 2 submissions: switch to two columns (4 rows, filled top row first) so everything
-     still fits on screen at once — the host screen never scrolls, unlike the judge's phone. */
   .reveal-list.two-col {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -244,7 +203,23 @@
   .reveal-list.two-col .reveal-card .meta .title { font-size: 2cqmin; }
   .reveal-list.two-col .reveal-card .meta .artist { font-size: 1.75cqmin; }
   .reveal-list.two-col .reveal-card .meta .by { font-size: 1.6cqmin; }
-  .reveal-list.two-col .winner-badge { font-size: 1.7cqmin; padding: 0.8cqh 1.5cqw; }
+  .reveal-list.two-col .winner-badge { font-size: 3.4cqmin; padding: 0.8cqh 1.5cqw; }
+  .reveal-list.four-col {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-flow: row;
+    gap: 1cqh 1.2cqw;
+    max-width: 98cqw;
+    max-height: none;
+    overflow: visible;
+  }
+  .reveal-list.four-col .reveal-card { padding: 1cqh 1.4cqw; gap: 1cqw; }
+  .reveal-list.four-col .reveal-card img { width: 6cqmin; height: 6cqmin; }
+  .reveal-list.four-col .reveal-card img.cover-wide { width: 10.6cqmin; height: 6cqmin; }
+  .reveal-list.four-col .reveal-card .meta .title { font-size: 1.5cqmin; }
+  .reveal-list.four-col .reveal-card .meta .artist { font-size: 1.3cqmin; }
+  .reveal-list.four-col .reveal-card .meta .by { font-size: 1.2cqmin; }
+  .reveal-list.four-col .winner-badge { font-size: 2.4cqmin; padding: 0.5cqh 1cqw; }
   .reveal-card {
     display: flex; align-items: center; gap: 1.8cqw; background: var(--panel);
     border-radius: 1.8cqmin; padding: 1.5cqh 2.2cqw; border: 2px solid transparent;
@@ -258,7 +233,7 @@
   .reveal-card .meta .artist { color: var(--muted); font-size: 1.75cqmin; }
   .reveal-card .meta .by { font-size: 1.55cqmin; color: var(--accent); margin-top: 0.4cqh; font-weight: 600; }
   .winner-badge {
-    background: var(--gold); color: #201827; font-weight: 800; font-size: 1.7cqmin;
+    background: var(--gold); color: #201827; font-weight: 800; font-size: 3.4cqmin;
     padding: 0.9cqh 1.8cqw; border-radius: 999px; white-space: nowrap;
   }
   .score-row {
@@ -267,8 +242,6 @@
     max-width: 52cqw; margin-left: auto; margin-right: auto; border: 2px solid transparent;
   }
   .score-row.winner { background: rgba(255, 217, 74, 0.18); border-color: var(--gold); box-shadow: 0 0 2.2cqmin rgba(255,217,74,0.35); }
-  /* More than 5 players: switch to two columns (filled top row first) so the whole
-     scoreboard fits on screen at once, same treatment as the winner-selection grid. */
   #final-scoreboard.two-col {
     display: grid; grid-template-columns: repeat(2, 1fr); grid-auto-flow: row;
     gap: 0.8cqh 2cqw; max-width: 88cqw; margin: 0 auto;
@@ -309,7 +282,6 @@
       <div class="code-box">
         <div class="label">Room code</div>
         <div class="code" id="room-code-lobby">····</div>
-        <div class="hint">Players: open the game on your phone and enter this code</div>
       </div>
       <div class="lobby-qr-section" id="lobby-qr-section">
         <div id="qrcode-lobby"></div>
@@ -319,15 +291,9 @@
       Couldn't detect this computer's network address for a QR code — players can still join by typing the room code above at your game's URL.
     </div>
     <div class="players" id="lobby-players-list"></div>
-
     <div class="rounds-picker">
-      <span>Turns per player:</span>
-      <label><input type="radio" name="rounds-lobby" value="1"> 1</label>
-      <label><input type="radio" name="rounds-lobby" value="2" checked> 2</label>
-      <label><input type="radio" name="rounds-lobby" value="3"> 3</label>
+      <span>Rounds:</span> <strong id="rounds-display">5</strong>
     </div>
-    <button class="primary" id="start-game-btn" disabled>Start game</button>
-    <div class="error-text" id="lobby-error"></div>
   </div>
 
   <div id="game-view" class="hidden">
@@ -340,11 +306,8 @@
     <div class="players" id="arena-players-list"></div>
     <div class="status" id="picking-status"></div>
 
-    <!-- Lives outside sequential-view/reveal-list so it stays independently showable during
-         BOTH the one-at-a-time walkthrough AND replays from the winner-selection list. -->
     <div class="yt-video-wrap hidden" id="yt-video-wrap"><div id="yt-player-container"></div></div>
 
-    <!-- One-at-a-time walkthrough -->
     <div id="sequential-view" class="hidden">
       <div class="seq-progress" id="seq-progress"></div>
       <div class="seq-card" id="seq-cover-card">
@@ -354,23 +317,13 @@
       <div class="artist" id="seq-artist" style="color:var(--muted); font-size:1.9cqmin;"></div>
     </div>
 
-    <!-- Full list, shown once every pick has been viewed -->
     <div class="reveal-list hidden" id="reveal-list"></div>
   </div>
 
   <div id="gameover-view" class="hidden">
     <h2>🏆 Final Scores</h2>
     <div id="final-scoreboard"></div>
-
-    <div class="rounds-picker">
-      <span>Turns per player:</span>
-      <label><input type="radio" name="rounds-again" value="1"> 1</label>
-      <label><input type="radio" name="rounds-again" value="2" checked> 2</label>
-      <label><input type="radio" name="rounds-again" value="3"> 3</label>
-    </div>
-    <button class="primary" id="play-again-btn">Play again</button>
-    <button class="secondary" id="back-to-lobby-btn">Back to lobby</button>
-    <div class="error-text" id="gameover-error"></div>
+    <div class="status" id="gameover-hint">Waiting on host…</div>
   </div>
 </div>
 </div>
@@ -380,13 +333,8 @@
 <script>
   const socket = io();
   const audio = new Audio();
-  // iTunes preview files tend to be mastered noticeably louder than typical YouTube audio —
-  // there's no way to fix the source files themselves, so this brings iTunes playback down
-  // to a level that better matches YouTube's, rather than one consistently overpowering
-  // the other depending on which type of pick is currently playing.
   audio.volume = 0.6;
 
-  // ---- Sound effects, synthesized with the Web Audio API (no external files needed) ----
   let audioCtx = null;
   function getAudioCtx() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -397,9 +345,6 @@
     try { getAudioCtx(); } catch (e) {}
     startBgMusic();
     document.getElementById('start-view').classList.add('hidden');
-    // Whatever screen is actually correct underneath (fresh lobby, or a resumed game already
-    // mid-round/reveal/final-scores via the catch-up events) is already showing by now —
-    // this button just needs to reveal it, not decide which one that is.
   });
 
   function playTone(freq, startTime, duration, type, gainPeak) {
@@ -417,24 +362,6 @@
     osc.stop(startTime + duration + 0.03);
   }
 
-  function playSweep(freqStart, freqEnd, startTime, duration, type, gainPeak) {
-    const ctx = getAudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = type || 'sawtooth';
-    osc.frequency.setValueAtTime(freqStart, startTime);
-    osc.frequency.exponentialRampToValueAtTime(freqEnd, startTime + duration);
-    gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(gainPeak == null ? 0.2 : gainPeak, startTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(startTime);
-    osc.stop(startTime + duration + 0.03);
-  }
-
-  // A short burst of filtered noise — used for the card-shuffle texture, since a real
-  // shuffle sounds like a percussive flutter, not a musical tone.
   function playNoiseBurst(startTime, duration, filterFreq, gainPeak) {
     const ctx = getAudioCtx();
     const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * duration));
@@ -458,26 +385,19 @@
     noise.stop(startTime + duration + 0.02);
   }
 
-  // ---- Real audio-file sound effects ----
-  // Files live in /public/sounds/ and are keyed by event name here — swapping or adding
-  // one later is just a one-line change to this list plus dropping the file in that folder.
   const sfxFiles = {
     revealPicks: new Audio('/sounds/reveal-picks.mp3'),
     newPrompt: new Audio('/sounds/new-prompt.mp3'),
     winnerChosen: new Audio('/sounds/winner-chosen.mp3')
   };
-  sfxFiles.newPrompt.volume = 0.7; // 30% quieter than the default full volume
+  sfxFiles.newPrompt.volume = 0.7;
   function playSfxFile(name) {
     const audio = sfxFiles[name];
     if (!audio) return;
     audio.currentTime = 0;
-    audio.play().catch(() => {}); // ignore if it can't play yet (e.g. before the unlock click)
+    audio.play().catch(() => {});
   }
 
-  // ---- Background music during picking ----
-  // Plays while players are choosing songs, stops the instant the judge reveals picks, and
-  // resumes for the next round — cycling through the playlist rather than restarting from the
-  // first track every round, so a longer game works its way through all five over time.
   const bgMusicTracks = [
     '/music/lofi-podcast.mp3',
     '/music/lofi-study.mp3',
@@ -497,7 +417,7 @@
     bgMusicAudio.play().catch(() => {});
   }
   function startBgMusic() {
-    if (!bgMusicAudio.paused) return; // already playing — don't restart it from the beginning
+    if (!bgMusicAudio.paused) return;
     playCurrentBgTrack();
   }
   function stopBgMusic() {
@@ -507,7 +427,6 @@
   const sfx = {
     gameStart() {
       const t = getAudioCtx().currentTime;
-      // Rising arpeggio into a bright resolve (previously used for "reveal picks")
       playTone(392, t, 0.09, 'triangle', 0.18);
       playTone(494, t + 0.08, 0.09, 'triangle', 0.18);
       playTone(587, t + 0.16, 0.09, 'triangle', 0.18);
@@ -524,14 +443,12 @@
       playTone(783.99, t + 0.2, 0.24, 'triangle', 0.22);
     },
     shuffle() {
-      // Custom card-riffle sound clip instead of synthesized noise bursts
       playSfxFile('newPrompt');
     },
     revealPicks() {
       playSfxFile('revealPicks');
     },
     winnerChosen() {
-      // Custom sound clip instead of synthesized tones
       playSfxFile('winnerChosen');
     },
     nextRound() {
@@ -547,12 +464,6 @@
     }
   };
 
-
-  // ---- YouTube IFrame player setup ----
-  // A fresh player instance is created for every video (rather than reusing one player
-  // across the whole session) — repeatedly calling loadVideoById() on the same long-lived
-  // instance is a known trigger for the video rendering as a solid black frame while its
-  // audio plays normally underneath. A brand-new iframe each time avoids that stuck state.
   let ytPlayer = null;
   let ytReady = false;
   let ytApiLoaded = false;
@@ -576,7 +487,7 @@
       events: {
         onReady: () => {
           ytReady = true;
-          ytPlayer.setVolume(100); // explicit, so it's a known, matched baseline against the iTunes side
+          ytPlayer.setVolume(100);
           console.log('[YouTube] Player ready.');
           if (onReadyCallback) onReadyCallback();
         },
@@ -591,16 +502,10 @@
     ytApiLoaded = true;
     createYtPlayer();
   }
-  // If this never logs anything, the youtube.com/iframe_api script itself never loaded —
-  // almost always an ad blocker or privacy extension blocking youtube.com, not a bug in this page.
   setTimeout(() => {
     if (!ytApiLoaded) console.warn('[YouTube] Still not ready after 5s — check for an ad blocker or network restriction on youtube.com.');
   }, 5000);
   window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
-  // Injected dynamically (rather than a static <script> tag) so this callback is guaranteed to
-  // already be defined before the API library can possibly try to call it — a static tag placed
-  // earlier in the page raced against this assignment, and won under slow/uneven network
-  // conditions, which is why the player worked inconsistently from one page load to the next.
   (function loadYouTubeIframeApi() {
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
@@ -608,8 +513,6 @@
   })();
 
   function handleYtStateChange(event) {
-    // Clips now play to completion (or until the judge advances) — no fixed time cap.
-    // This just reports back when a clip finishes entirely on its own.
     if (event.data === YT.PlayerState.ENDED) {
       socket.emit('host:playback-ended');
     }
@@ -620,8 +523,6 @@
   const roomCodeEl = document.getElementById('room-code');
   const roomCodeLobbyEl = document.getElementById('room-code-lobby');
   const lobbyPlayersListEl = document.getElementById('lobby-players-list');
-  const startGameBtn = document.getElementById('start-game-btn');
-  const lobbyErrorEl = document.getElementById('lobby-error');
   const lobbyView = document.getElementById('lobby-view');
 
   const gameView = document.getElementById('game-view');
@@ -642,19 +543,13 @@
 
   const gameoverView = document.getElementById('gameover-view');
   const finalScoreboardEl = document.getElementById('final-scoreboard');
-  const playAgainBtn = document.getElementById('play-again-btn');
-  const backToLobbyBtn = document.getElementById('back-to-lobby-btn');
-  const gameoverErrorEl = document.getElementById('gameover-error');
 
   let currentPhase = 'lobby';
   let gameStarted = false;
-  let revealPicks = [];      // full picks array from the current reveal
-  let revealSubPhase = null; // 'sequential' | 'choosing'
+  let revealPicks = [];
+  let revealSubPhase = null;
   let currentRevealIndex = 0;
 
-  // Remembers this room's code across a page reload — needed because a mobile browser (or
-  // just an accidental refresh) can fully reload the host screen mid-game, and without this
-  // there'd be no way to get back into the same room; the server would just start a new one.
   const HOST_ROOM_KEY = 'queueItUp.hostRoomCode';
   function saveHostRoomCode(code) {
     try { localStorage.setItem(HOST_ROOM_KEY, code); } catch (e) {}
@@ -672,18 +567,10 @@
     if (res.joinBaseUrl) {
       const joinUrl = `${res.joinBaseUrl}/?code=${res.code}`;
       new QRCode(document.getElementById('qrcode'), {
-        text: joinUrl,
-        width: 180,
-        height: 180,
-        colorDark: '#14121f',
-        colorLight: '#ffffff'
+        text: joinUrl, width: 180, height: 180, colorDark: '#14121f', colorLight: '#ffffff'
       });
       new QRCode(document.getElementById('qrcode-lobby'), {
-        text: joinUrl,
-        width: 180,
-        height: 180,
-        colorDark: '#14121f',
-        colorLight: '#ffffff'
+        text: joinUrl, width: 180, height: 180, colorDark: '#14121f', colorLight: '#ffffff'
       });
     } else {
       document.getElementById('qrcode').classList.add('hidden');
@@ -706,10 +593,7 @@
     socket.emit('host:resume-room', { code: savedRoomCode }, (res) => {
       if (res.ok) {
         applyRoomCodeAndQr(res);
-        // Any in-progress state (round, reveal, scores) arrives right after via the same
-        // events a normal game already uses — no separate "resumed" handling needed.
       } else {
-        // That room's gone (server restarted, or it was never actually created) — start fresh.
         createFreshRoom();
       }
     });
@@ -717,14 +601,7 @@
     createFreshRoom();
   }
 
-  startGameBtn.addEventListener('click', () => {
-    getAudioCtx();
-    sfx.gameStart();
-    const turns = document.querySelector('input[name="rounds-lobby"]:checked').value;
-    socket.emit('start-game', { turnsPerPlayer: Number(turns) });
-  });
-
-  // Two-tap inline confirmation (no browser popup), matching the judge's "New prompt" pattern.
+  // Two-tap inline confirmation (no browser popup) for the one control that stays on this screen.
   let endGameArmed = false;
   let endGameResetTimer = null;
   const endGameBtn = document.getElementById('end-game-btn');
@@ -747,34 +624,25 @@
     endGameBtn.classList.remove('confirm-armed');
   }
 
-  playAgainBtn.addEventListener('click', () => {
-    getAudioCtx();
-    gameoverErrorEl.textContent = '';
-    const turns = document.querySelector('input[name="rounds-again"]:checked').value;
-    socket.emit('play-again', { turnsPerPlayer: Number(turns) });
-  });
-
-  backToLobbyBtn.addEventListener('click', () => {
-    getAudioCtx();
-    socket.emit('host:back-to-lobby');
-  });
-
-  socket.on('room:back-to-lobby', ({ code, joinBaseUrl, players }) => {
-    gameStarted = false; // was stuck true from the previous game, which kept re-disabling
-                         // the Start button every time the player list re-rendered
-    startBgMusic();
-    gameView.classList.add('hidden');
-    gameoverView.classList.add('hidden');
-    lobbyView.classList.remove('hidden');
-    saveHostRoomCode(code);
-    applyRoomCodeAndQr({ code, joinBaseUrl });
-    renderPlayerChips(lobbyPlayersListEl, players, false, true);
-    startGameBtn.disabled = players.length < 3;
-  });
-
-  socket.on('room:start-game-error', ({ error }) => {
-    lobbyErrorEl.textContent = error;
-    gameoverErrorEl.textContent = error;
+  // Start/Play Again/Back to Lobby are all controller-driven now (from a player's phone) —
+  // this screen just reacts to whatever the controller does, same as everything else.
+  socket.on('room:rejoin-new-room', ({ code }) => {
+    // Update the display AND actually tell the server to associate this socket with the new
+    // room (join its channel, update tracking) — reusing the same resume flow already built
+    // for host reconnection. Without this, the host's connection stays silently tied to the
+    // just-deleted old room and never receives anything broadcast to the new one, including
+    // "Start game" — exactly what was happening before this fix.
+    socket.emit('host:resume-room', { code }, (res) => {
+      if (!res.ok) return;
+      gameStarted = false;
+      startBgMusic();
+      gameView.classList.add('hidden');
+      gameoverView.classList.add('hidden');
+      lobbyView.classList.remove('hidden');
+      saveHostRoomCode(res.code);
+      applyRoomCodeAndQr(res);
+      renderPlayerChips(lobbyPlayersListEl, [], false, true);
+    });
   });
 
   function renderPlayerChips(container, players, showScore, showRemoveBtn) {
@@ -783,18 +651,34 @@
       container.innerHTML = '<span style="color:var(--muted)">Waiting for players to join…</span>';
       return;
     }
-    players.forEach(p => {
+    // Audience members are consolidated into a single counter chip rather than one chip
+    // each — a room could have quite a few of them, and individually they don't need to be
+    // distinguished the way active players (who actually submit/vote) do.
+    const nonAudience = players.filter(p => p.role !== 'audience');
+    const audienceCount = players.length - nonAudience.length;
+
+    nonAudience.forEach(p => {
       const chip = document.createElement('div');
-      chip.className = 'player-chip' + (p.hasPicked ? ' picked' : '') + (p.isJudge ? ' judge' : '') + (p.connected === false ? ' disconnected' : '');
+      chip.className = 'player-chip'
+        + (p.hasPicked || p.hasVoted ? ' picked' : '')
+        + (p.connected === false ? ' disconnected' : '');
       const label = escapeHtml(p.name) + (showScore ? ` · ${p.score} pts` : '') + (p.connected === false ? ' (reconnecting…)' : '');
       const removeBtn = showRemoveBtn ? `<button class="remove-player-btn" data-player-id="${p.id}" title="Remove ${escapeHtml(p.name)}">✕</button>` : '';
       chip.innerHTML = `<span class="dot"></span> ${label}${removeBtn}`;
       container.appendChild(chip);
     });
+
+    if (audienceCount > 0) {
+      const audienceChip = document.createElement('div');
+      audienceChip.className = 'player-chip audience';
+      audienceChip.innerHTML = `<span class="dot"></span> Audience Members: ${audienceCount}`;
+      container.appendChild(audienceChip);
+    }
+
     if (showRemoveBtn) {
       container.querySelectorAll('.remove-player-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-          socket.emit('host:remove-player', { playerId: btn.dataset.playerId });
+          socket.emit('controller:remove-player', { playerId: btn.dataset.playerId });
         });
       });
     }
@@ -802,17 +686,23 @@
 
   socket.on('room:players-updated', (players) => {
     renderPlayerChips(lobbyPlayersListEl, players, false, true);
-    renderPlayerChips(arenaPlayersListEl, players, true, false);
-    startGameBtn.disabled = players.length < 3 || gameStarted;
+    renderPlayerChips(arenaPlayersListEl, players, true);
+
+    // "(name) is host" needs to stay accurate even when control changes hands mid-round —
+    // this doesn't otherwise get touched outside the initial 'room:round-started' text.
+    if (gameStarted && currentPhase !== 'lobby') {
+      const controller = players.find(p => p.isController);
+      if (controller) judgeBannerEl.textContent = `${controller.name} is host`;
+    }
 
     if (gameStarted && currentPhase === 'picking') {
-      const nonJudge = players.filter(p => !p.isJudge);
-      const pickedCount = nonJudge.filter(p => p.hasPicked).length;
-      pickingStatusEl.textContent = !nonJudge.length
+      const active = players.filter(p => p.role === 'active');
+      const pickedCount = active.filter(p => p.hasPicked).length;
+      pickingStatusEl.textContent = !active.length
         ? ''
-        : pickedCount === nonJudge.length
+        : pickedCount === active.length
           ? 'All players in'
-          : `${pickedCount}/${nonJudge.length} players have picked…`;
+          : `${pickedCount}/${active.length} players have picked…`;
     }
   });
 
@@ -828,7 +718,11 @@
     sfx.allPicked();
   });
 
-  socket.on('room:round-started', ({ roundNumber, totalRounds, prompt, judgeName }) => {
+  socket.on('room:rounds-selected', ({ totalRounds }) => {
+    document.getElementById('rounds-display').textContent = totalRounds;
+  });
+
+  socket.on('room:round-started', ({ roundNumber, totalRounds, prompt, controllerName }) => {
     gameStarted = true;
     currentPhase = 'picking';
     lobbyView.classList.add('hidden');
@@ -836,7 +730,7 @@
     gameView.classList.remove('hidden');
     exitSequentialFocus();
     roundLabelEl.textContent = `Round ${roundNumber} of ${totalRounds}`;
-    judgeBannerEl.textContent = `${judgeName} is judging this round`;
+    judgeBannerEl.textContent = `${controllerName} is host`;
     promptTextEl.textContent = prompt;
     sequentialView.classList.add('hidden');
     revealListEl.classList.add('hidden');
@@ -875,9 +769,6 @@
     showSequentialCard();
   });
 
-  // While reviewing submissions one at a time, hide the picking-phase chrome (round header,
-  // judge banner, prompt, player list) so only the logo/title sits above a much bigger video,
-  // and shrink the header itself so the video and song info both fully fit on screen.
   const tvFrameEl = document.querySelector('.tv-frame');
   function enterSequentialFocus() {
     roundLabelEl.classList.add('hidden');
@@ -915,18 +806,13 @@
     seqCover.classList.toggle('cover-wide', !!entry.track.youtube);
     seqTitle.innerHTML = escapeHtml(entry.track.title);
     seqArtist.textContent = entry.track.artist;
-    // Bigger title whenever a static cover/thumbnail is showing instead of video — true for
-    // iTunes picks always, and for YouTube picks too before play is pressed (still just a
-    // thumbnail at that point, no video filling the space yet).
     tvFrameEl.classList.add('cover-showing');
   }
 
   socket.on('room:reveal-choosing', () => {
     revealSubPhase = 'choosing';
     sequentialView.classList.add('hidden');
-    stopAllPlayback(); // start clean — nothing should be mid-play from the walkthrough
-    // Keep the title shrunk (still "focus mode"), but bring back round/judge/prompt context —
-    // shown compactly so the 8-song grid still has the room it needs.
+    stopAllPlayback();
     roundLabelEl.classList.remove('hidden');
     judgeBannerEl.classList.remove('hidden');
     promptBoxEl.classList.remove('hidden');
@@ -936,7 +822,9 @@
 
   function renderFullRevealList() {
     revealListEl.classList.remove('hidden');
-    revealListEl.classList.toggle('two-col', revealPicks.length > 2);
+    const count = revealPicks.length;
+    revealListEl.classList.toggle('two-col', count >= 3 && count < 5);
+    revealListEl.classList.toggle('four-col', count >= 5);
     revealListEl.innerHTML = '';
     revealPicks.forEach((entry, i) => {
       const card = document.createElement('div');
@@ -949,20 +837,17 @@
           <div class="artist">${escapeHtml(entry.track.artist)}</div>
           <div class="by hidden">Picked by ${escapeHtml(entry.playerName)}</div>
         </div>
-        <span class="winner-badge hidden">🏆 WINNER</span>
       `;
       revealListEl.appendChild(card);
     });
   }
 
   socket.on('room:now-playing', ({ index, track }) => {
-    // Highlight in whichever view is currently showing
     document.querySelectorAll('.reveal-card').forEach(c => c.classList.remove('now-playing'));
     const card = revealListEl.querySelector(`.reveal-card[data-index="${index}"]`);
     if (card) card.classList.add('now-playing');
 
     if (track.youtube && ytApiLoaded) {
-      // Plays until the video ends naturally or the judge advances — no fixed time cap.
       audio.pause();
       seqCoverCard.classList.add('hidden');
       ytVideoWrap.classList.remove('hidden');
@@ -999,13 +884,19 @@
     socket.emit('host:playback-ended');
   });
 
-  socket.on('room:winner-chosen', ({ index }) => {
-    const card = revealListEl.querySelector(`.reveal-card[data-index="${index}"]`);
-    if (card) {
-      card.classList.add('winner');
-      card.querySelector('.winner-badge').classList.remove('hidden');
-    }
-    // Reveal who picked what for every song now that judging is done
+  // Every song that got at least one vote turns gold and shows its tally — replacing the
+  // old single-winner badge, since points are now earned per vote rather than one crowned pick.
+  socket.on('room:results-revealed', ({ voteCounts }) => {
+    revealPicks.forEach((entry, i) => {
+      const count = voteCounts[i] || 0;
+      const card = revealListEl.querySelector(`.reveal-card[data-index="${i}"]`);
+      if (!card) return;
+      if (count > 0) card.classList.add('winner');
+      const tag = document.createElement('span');
+      tag.className = 'winner-badge';
+      tag.textContent = `${count} vote${count === 1 ? '' : 's'}`;
+      card.appendChild(tag);
+    });
     revealListEl.querySelectorAll('.by').forEach(el => el.classList.remove('hidden'));
     sfx.winnerChosen();
   });
@@ -1016,7 +907,6 @@
     exitSequentialFocus();
     gameView.classList.add('hidden');
     gameoverView.classList.remove('hidden');
-    gameoverErrorEl.textContent = '';
     sfx.nextRound();
     finalScoreboardEl.innerHTML = '';
     finalScoreboardEl.classList.toggle('two-col', scoreboard.length > 5);

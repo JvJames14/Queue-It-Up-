@@ -244,16 +244,18 @@ const PROMPTS = [
   "Play your favorite one hit wonder"
 ];
 
+const MAX_ACTIVE_PLAYERS = 8;
+const ROUND_OPTIONS = [5, 10, 15];
+
 /** rooms: Map<code, {
- *   hostSocketId,                     // the TV device — the ONLY device that can start/restart the game
+ *   hostSocketId, hostDisconnectTimer,        // the TV device — pure display, no game controls of its own
+ *   controllerSocketId,                       // a player — drives the whole game (was called "judge"/"leader" before)
  *   phase: 'lobby'|'picking'|'reveal'|'game-over',
- *   prompt, promptIndex,
- *   players: Map<socketId, { name, pick, hasPicked, score }>,
- *      // pick = { id, title, artist, album, cover, previewUrl, durationSec, youtube?: { videoId, startSeconds } }
- *   gameStarted: bool,
- *   playerOrderSnapshot: [socketId, ...],   // locked in when the game (re)starts; judge cycles through this
- *   currentRoundNumber, totalRounds,        // totalRounds = players × turnsPerPlayer (1, 2, or 3)
- *   reveal: { picks: [{playerSocketId, playerName, track}], revealIndex, subPhase: 'sequential'|'choosing', nowPlayingIndex, winnerIndex, canAdvance, advanceTimer } | null
+ *   prompt, promptIndex, seenPromptIndexes,
+ *   players: Map<socketId, { name, role: 'active'|'audience', pick, hasPicked, score, connected }>,
+ *   gameStarted, currentRoundNumber, totalRounds,   // totalRounds is now a flat 5/10/15, not multiplied by player count
+ *   reveal: { picks: [{playerSocketId, playerName, track}], revealIndex, subPhase: 'sequential'|'choosing',
+ *             nowPlayingIndex, votes: Map<voterSocketId, votedPickIndex>, canAdvance, advanceTimer } | null
  * }>
  */
 const rooms = new Map();
@@ -269,8 +271,6 @@ function makeRoomCode() {
 
 function pickPrompt(excludeIndexes) {
   const excluded = excludeIndexes instanceof Set ? excludeIndexes : new Set(excludeIndexes != null ? [excludeIndexes] : []);
-  // If every prompt has somehow already been shown this round (a lot of shuffling on a
-  // short list), fall back to allowing repeats rather than looping forever.
   const pool = excluded.size >= PROMPTS.length ? new Set() : excluded;
   let idx;
   do {
@@ -279,141 +279,39 @@ function pickPrompt(excludeIndexes) {
   return idx;
 }
 
-function clampTurns(n) {
+function clampRounds(n) {
   const num = Number(n);
-  if (!Number.isFinite(num)) return 2;
-  return Math.min(3, Math.max(1, Math.round(num)));
+  if (ROUND_OPTIONS.includes(num)) return num;
+  return 5;
 }
 
-function getCurrentJudgeId(room) {
-  if (!room.gameStarted || room.currentRoundNumber < 1 || !room.playerOrderSnapshot.length) return null;
-  const idx = (room.currentRoundNumber - 1) % room.playerOrderSnapshot.length;
-  return room.playerOrderSnapshot[idx] || null;
+function activePlayers(room) {
+  return Array.from(room.players.entries()).filter(([, p]) => p.role === 'active');
 }
 
 function playerListPayload(room) {
-  const judgeId = getCurrentJudgeId(room);
   return Array.from(room.players.entries()).map(([id, p]) => ({
     id,
     name: p.name,
+    role: p.role,
     hasPicked: p.hasPicked,
+    hasVoted: room.reveal ? room.reveal.votes.has(id) : false,
     score: p.score,
-    isJudge: id === judgeId,
+    isController: id === room.controllerSocketId,
     connected: p.connected !== false
   }));
 }
 
-// Replays the sequence of setup events a reconnecting player needs to land back in the
-// correct spot — reusing the SAME client-side handlers a fresh round already relies on,
-// rather than building a separate "resume" code path on the client.
-function sendCatchUpState(socket, room) {
-  if (room.phase === 'game-over') {
-    socket.emit('room:game-over', { scoreboard: buildScoreboard(room) });
-    return;
-  }
-  if (!room.gameStarted) return; // still in the lobby — nothing to catch up on
-
-  const judgeId = getCurrentJudgeId(room);
-  const judgePlayer = room.players.get(judgeId);
-  socket.emit('room:round-started', {
-    roundNumber: room.currentRoundNumber,
-    totalRounds: room.totalRounds,
-    prompt: room.prompt,
-    judgeName: judgePlayer?.name || 'Unknown'
-  });
-  socket.emit('room:your-role', { isJudge: socket.id === judgeId });
-
-  if (room.phase === 'picking') {
-    if (socket.id === judgeId) {
-      // The tally could have already been complete before the judge reconnected — the
-      // one-time "all picked" signal only fires reactively when the last pick comes in,
-      // so a reconnecting judge needs it re-checked and re-sent, or their Reveal button
-      // would stay stuck disabled even though everyone's actually already submitted.
-      if (allNonJudgePicked(room)) {
-        socket.emit('room:all-picked');
-      }
-    } else {
-      const me = room.players.get(socket.id);
-      if (me && me.hasPicked) {
-        socket.emit('room:already-picked');
-      }
-    }
-  }
-
-  if (room.phase === 'reveal' && room.reveal) {
-    socket.emit('room:reveal', {
-      picks: room.reveal.picks.map(({ playerName, track }) => ({ playerName, track })),
-      revealIndex: room.reveal.revealIndex,
-      subPhase: room.reveal.subPhase
-    });
-    if (room.reveal.subPhase === 'choosing') {
-      socket.emit('room:reveal-choosing');
-      if (room.reveal.winnerIndex !== null) {
-        const winnerEntry = room.reveal.picks[room.reveal.winnerIndex];
-        socket.emit('room:winner-chosen', {
-          index: room.reveal.winnerIndex,
-          playerName: winnerEntry.playerName,
-          scoreboard: buildScoreboard(room)
-        });
-      }
-    }
-  }
+function allActivePicked(room) {
+  const active = activePlayers(room);
+  return active.length > 0 && active.every(([, p]) => p.hasPicked);
 }
 
-// Host-equivalent of sendCatchUpState — replays enough state for the host (TV) screen to
-// rebuild its current view after reconnecting, whether that's a brief network drop or a
-// full page reload (e.g. the browser tab was closed and reopened).
-function sendHostCatchUpState(socket, room) {
-  socket.emit('room:players-updated', playerListPayload(room));
-
-  if (room.phase === 'game-over') {
-    socket.emit('room:game-over', { scoreboard: buildScoreboard(room) });
-    return;
-  }
-  if (!room.gameStarted) return; // still in the lobby — nothing else to replay
-
-  const judgeId = getCurrentJudgeId(room);
-  const judgePlayer = room.players.get(judgeId);
-  socket.emit('room:round-started', {
-    roundNumber: room.currentRoundNumber,
-    totalRounds: room.totalRounds,
-    prompt: room.prompt,
-    judgeName: judgePlayer?.name || 'Unknown'
-  });
-
-  if (room.phase === 'reveal' && room.reveal) {
-    socket.emit('room:reveal', {
-      picks: room.reveal.picks.map(({ playerName, track }) => ({ playerName, track })),
-      revealIndex: room.reveal.revealIndex,
-      subPhase: room.reveal.subPhase
-    });
-    if (room.reveal.subPhase === 'choosing') {
-      socket.emit('room:reveal-choosing');
-      if (room.reveal.winnerIndex !== null) {
-        const winnerEntry = room.reveal.picks[room.reveal.winnerIndex];
-        socket.emit('room:winner-chosen', {
-          index: room.reveal.winnerIndex,
-          playerName: winnerEntry.playerName,
-          scoreboard: buildScoreboard(room)
-        });
-      }
-    } else if (room.reveal.nowPlayingIndex !== null && room.reveal.nowPlayingIndex !== undefined) {
-      // Resume showing whichever song was actively playing when the host dropped —
-      // playback itself may need a fresh click to actually resume (browser autoplay
-      // rules reset on a genuine page reload), but at least the screen shows the
-      // right song instead of snapping back to the picking view.
-      const entry = room.reveal.picks[room.reveal.nowPlayingIndex];
-      if (entry) {
-        socket.emit('room:now-playing', { index: room.reveal.nowPlayingIndex, track: entry.track, playerName: entry.playerName });
-      }
-    }
-  }
-}
-
-function allNonJudgePicked(room) {
-  const judgeId = getCurrentJudgeId(room);
-  const nonJudge = Array.from(room.players.entries()).filter(([id]) => id !== judgeId);
-  return nonJudge.length > 0 && nonJudge.every(([, p]) => p.hasPicked);
+// Everyone currently connected (active + audience) is expected to cast one vote per round.
+function allVoted(room) {
+  if (!room.reveal) return false;
+  const everyone = Array.from(room.players.entries()).filter(([, p]) => p.connected !== false);
+  return everyone.length > 0 && everyone.every(([id]) => room.reveal.votes.has(id));
 }
 
 function buildScoreboard(room) {
@@ -423,15 +321,18 @@ function buildScoreboard(room) {
 }
 
 function emitStartError(room, error) {
-  io.to(room.hostSocketId).emit('room:start-game-error', { error });
+  if (room.controllerSocketId) io.to(room.controllerSocketId).emit('room:start-game-error', { error });
+}
+
+function controllerName(room) {
+  const c = room.players.get(room.controllerSocketId);
+  return c?.name || 'Unknown';
 }
 
 function startRound(room, roomCode) {
   const previousPromptIndex = room.promptIndex;
   room.promptIndex = pickPrompt(previousPromptIndex != null ? new Set([previousPromptIndex]) : undefined);
   room.prompt = PROMPTS[room.promptIndex];
-  // Tracks every prompt shown so far THIS round (reset fresh each round) so a shuffle
-  // never repeats one already seen since the round began.
   room.seenPromptIndexes = new Set([room.promptIndex]);
   room.phase = 'picking';
   room.reveal = null;
@@ -440,18 +341,12 @@ function startRound(room, roomCode) {
     p.hasPicked = false;
   }
 
-  const judgeId = getCurrentJudgeId(room);
-  const judgePlayer = room.players.get(judgeId);
-
   io.to(roomCode).emit('room:round-started', {
     roundNumber: room.currentRoundNumber,
     totalRounds: room.totalRounds,
     prompt: room.prompt,
-    judgeName: judgePlayer?.name || 'Unknown'
+    controllerName: controllerName(room)
   });
-  for (const id of room.players.keys()) {
-    io.to(id).emit('room:your-role', { isJudge: id === judgeId });
-  }
   io.to(roomCode).emit('room:players-updated', playerListPayload(room));
 }
 
@@ -476,20 +371,102 @@ function endGameNow(room, roomCode) {
   io.to(roomCode).emit('room:game-over', { scoreboard: buildScoreboard(room) });
 }
 
+// Replays the sequence of setup events a reconnecting player needs to land back in the
+// correct spot — reusing the SAME client-side handlers a fresh round already relies on.
+function sendCatchUpState(socket, room) {
+  if (room.phase === 'game-over') {
+    socket.emit('room:game-over', { scoreboard: buildScoreboard(room) });
+    return;
+  }
+  if (!room.gameStarted) return; // still in the lobby — nothing to catch up on
+
+  socket.emit('room:round-started', {
+    roundNumber: room.currentRoundNumber,
+    totalRounds: room.totalRounds,
+    prompt: room.prompt,
+    controllerName: controllerName(room)
+  });
+
+  const me = room.players.get(socket.id);
+
+  if (room.phase === 'picking') {
+    if (me?.role === 'active' && me.hasPicked) {
+      socket.emit('room:already-picked');
+    }
+    if (socket.id === room.controllerSocketId && allActivePicked(room)) {
+      socket.emit('room:all-picked');
+    }
+  }
+
+  if (room.phase === 'reveal' && room.reveal) {
+    socket.emit('room:reveal', {
+      picks: room.reveal.picks.map(({ playerName, track }) => ({ playerName, track })),
+      revealIndex: room.reveal.revealIndex,
+      subPhase: room.reveal.subPhase
+    });
+    if (room.reveal.subPhase === 'choosing') {
+      socket.emit('room:reveal-choosing');
+      if (me && room.reveal.votes.has(socket.id)) {
+        socket.emit('room:vote-recorded', { index: room.reveal.votes.get(socket.id) });
+      }
+      if (socket.id === room.controllerSocketId && allVoted(room)) {
+        socket.emit('room:all-voted');
+      }
+    }
+  }
+}
+
+// Host-equivalent of sendCatchUpState — the TV is pure display now, so it just needs to
+// know what to SHOW, not who's allowed to do what.
+function sendHostCatchUpState(socket, room) {
+  socket.emit('room:players-updated', playerListPayload(room));
+
+  if (room.phase === 'game-over') {
+    socket.emit('room:game-over', { scoreboard: buildScoreboard(room) });
+    return;
+  }
+  if (!room.gameStarted) return;
+
+  socket.emit('room:round-started', {
+    roundNumber: room.currentRoundNumber,
+    totalRounds: room.totalRounds,
+    prompt: room.prompt,
+    controllerName: controllerName(room)
+  });
+
+  if (room.phase === 'reveal' && room.reveal) {
+    socket.emit('room:reveal', {
+      picks: room.reveal.picks.map(({ playerName, track }) => ({ playerName, track })),
+      revealIndex: room.reveal.revealIndex,
+      subPhase: room.reveal.subPhase
+    });
+    if (room.reveal.subPhase === 'choosing') {
+      socket.emit('room:reveal-choosing');
+    } else if (room.reveal.nowPlayingIndex !== null && room.reveal.nowPlayingIndex !== undefined) {
+      const entry = room.reveal.picks[room.reveal.nowPlayingIndex];
+      if (entry) {
+        socket.emit('room:now-playing', { index: room.reveal.nowPlayingIndex, track: entry.track, playerName: entry.playerName });
+      }
+    }
+  }
+}
+
 io.on('connection', (socket) => {
 
-  // ---- Host creates a room (TV device — the only device that can start/restart the game) ----
+  // ---- Host creates a room (TV device — pure display, all game controls now live on the
+  // controller's phone) ----
   socket.on('host:create-room', (_data, ack) => {
     const code = makeRoomCode();
     rooms.set(code, {
       hostSocketId: socket.id,
       hostDisconnectTimer: null,
+      controllerSocketId: null,
       phase: 'lobby',
       prompt: null,
       promptIndex: null,
       players: new Map(),
       gameStarted: false,
-      playerOrderSnapshot: [],
+      selectedTotalRounds: 5, // live-synced from the controller's phone for the host screen to display
       currentRoundNumber: 0,
       totalRounds: 0,
       reveal: null
@@ -500,8 +477,7 @@ io.on('connection', (socket) => {
     ack?.({ ok: true, code, joinBaseUrl: getJoinBaseUrl(socket) });
   });
 
-  // ---- Host reconnects to a room it already created (network drop, refresh, or the
-  // browser tab having been fully reloaded after being backgrounded for a while) ----
+  // ---- Host reconnects to a room it already created ----
   socket.on('host:resume-room', ({ code }, ack) => {
     const roomCode = (code || '').trim().toUpperCase();
     const room = rooms.get(roomCode);
@@ -521,6 +497,10 @@ io.on('connection', (socket) => {
   });
 
   // ---- Player joins a room ----
+  // The first 8 to join become "active" players (search + submit + vote); anyone after
+  // that joins as an "audience" member (vote only, no submissions, no player cap). The
+  // very first person to join becomes the controller — the player who drives the whole
+  // game (starting it, revealing picks, advancing rounds) — until/unless they hand it off.
   socket.on('player:join', ({ code, name }, ack) => {
     const roomCode = (code || '').trim().toUpperCase();
     const room = rooms.get(roomCode);
@@ -528,10 +508,8 @@ io.on('connection', (socket) => {
 
     const cleanName = (name || '').trim().slice(0, 16) || 'Player';
 
-    // Reconnection: if this name matches a player who disconnected mid-game, reclaim their
-    // existing slot (score, current pick, judge rotation position all preserved) instead of
-    // treating this as a brand-new join. This works even after the game has started — that's
-    // the whole point, since a fresh join is deliberately blocked once the game is underway.
+    // Reconnection: if this name matches someone who disconnected mid-game, reclaim their
+    // existing slot (role, score, current pick all preserved) instead of a fresh join.
     const reconnectEntry = Array.from(room.players.entries())
       .find(([, p]) => p.connected === false && p.name.toLowerCase() === cleanName.toLowerCase());
 
@@ -541,13 +519,14 @@ io.on('connection', (socket) => {
       playerData.connected = true;
       room.players.set(socket.id, playerData);
 
-      // Fix up anywhere the old (now-stale) socket id was recorded, so judge rotation and
-      // winner-scoring both keep working correctly for this player going forward.
-      if (room.playerOrderSnapshot.length) {
-        room.playerOrderSnapshot = room.playerOrderSnapshot.map(id => id === oldSocketId ? socket.id : id);
-      }
+      if (room.controllerSocketId === oldSocketId) room.controllerSocketId = socket.id;
       if (room.reveal && room.reveal.picks) {
         room.reveal.picks.forEach(p => { if (p.playerSocketId === oldSocketId) p.playerSocketId = socket.id; });
+      }
+      if (room.reveal && room.reveal.votes.has(oldSocketId)) {
+        const v = room.reveal.votes.get(oldSocketId);
+        room.reveal.votes.delete(oldSocketId);
+        room.reveal.votes.set(socket.id, v);
       }
 
       socket.join(roomCode);
@@ -562,12 +541,7 @@ io.on('connection', (socket) => {
 
     // ---- Fresh join ----
     if (room.gameStarted) {
-      return ack?.({ ok: false, error: 'This game already started. Ask the host to open a new room.' });
-    }
-    // Max 9 players so a round can never produce more than 8 submissions (1 judge + 8 others) —
-    // matching the host screen's 2-column, 4-row grid capacity.
-    if (room.players.size >= 9) {
-      return ack?.({ ok: false, error: 'This room is full (9 players max).' });
+      return ack?.({ ok: false, error: 'This game already started. Ask the controller to open a new room.' });
     }
     const nameTaken = Array.from(room.players.values())
       .some(p => p.name.toLowerCase() === cleanName.toLowerCase());
@@ -575,32 +549,95 @@ io.on('connection', (socket) => {
       return ack?.({ ok: false, error: 'That name is already taken in this room — pick another.' });
     }
 
-    room.players.set(socket.id, { name: cleanName, pick: null, hasPicked: false, score: 0, connected: true });
+    const activeCount = activePlayers(room).length;
+    const role = activeCount < MAX_ACTIVE_PLAYERS ? 'active' : 'audience';
+
+    room.players.set(socket.id, { name: cleanName, role, pick: null, hasPicked: false, score: 0, connected: true });
+    if (!room.controllerSocketId) room.controllerSocketId = socket.id;
 
     socket.join(roomCode);
     socket.data.roomCode = roomCode;
     socket.data.role = 'player';
 
-    ack?.({ ok: true });
+    ack?.({ ok: true, role, isController: socket.id === room.controllerSocketId });
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
     io.to(roomCode).emit('room:player-joined', { name: cleanName });
   });
 
-  // ---- Host starts the game (this click is also what satisfies browser autoplay policy
-  // for songs played later via remote commands from a player's phone) ----
-  socket.on('start-game', ({ turnsPerPlayer } = {}) => {
+  // ---- Controller assigns a different player as the new controller ----
+  socket.on('controller:assign-new-host', ({ playerId }) => {
+    const roomCode = socket.data.roomCode;
+    const room = rooms.get(roomCode);
+    if (!room) return;
+    if (socket.id !== room.controllerSocketId) return;
+    if (!room.players.has(playerId)) return;
+
+    const oldControllerId = room.controllerSocketId;
+    room.controllerSocketId = playerId;
+    io.to(roomCode).emit('room:players-updated', playerListPayload(room));
+
+    // "All picked" is normally sent once, reactively, only to whoever was controller at
+    // that exact moment — if control changes hands afterward, the new controller never got
+    // that signal and their "Reveal" button would be stuck disabled even though the
+    // underlying condition is already true.
+    if (room.phase === 'picking' && allActivePicked(room)) {
+      io.to(playerId).emit('room:all-picked');
+    }
+
+    // Mid-reveal, BOTH sides of the handoff need a full resync, not just the new controller.
+    // The new controller was previously just a passive viewer, so their controller panel has
+    // never been populated. The old controller's viewer-panel is the mirror problem: it was
+    // never being kept in sync while THEY held control (they were using the judge-specific
+    // rendering path instead), so it's showing whatever was last there — potentially from an
+    // entirely earlier round. Re-sending the current reveal state to both fixes both at once,
+    // since each one's client-side handler already knows how to build the correct view based
+    // on their current (just-updated) controller status.
+    if (room.phase === 'reveal' && room.reveal) {
+      [oldControllerId, playerId].forEach(id => {
+        const targetSocket = io.sockets.sockets.get(id);
+        if (!targetSocket) return;
+        targetSocket.emit('room:reveal', {
+          picks: room.reveal.picks.map(({ playerName, track }) => ({ playerName, track })),
+          revealIndex: room.reveal.revealIndex,
+          subPhase: room.reveal.subPhase
+        });
+        if (room.reveal.subPhase === 'choosing') {
+          targetSocket.emit('room:reveal-choosing');
+          if (room.reveal.votes.has(id)) {
+            targetSocket.emit('room:vote-recorded', { index: room.reveal.votes.get(id) });
+          }
+        }
+      });
+      if (room.reveal.subPhase === 'choosing' && allVoted(room)) {
+        io.to(playerId).emit('room:all-voted');
+      }
+    }
+  });
+
+  // ---- Controller's rounds selection is live-synced to the host screen for display ----
+  socket.on('controller:update-rounds', ({ totalRounds } = {}) => {
+    const roomCode = socket.data.roomCode;
+    const room = rooms.get(roomCode);
+    if (!room || (room.phase !== 'lobby' && room.phase !== 'game-over')) return;
+    if (socket.id !== room.controllerSocketId) return;
+
+    room.selectedTotalRounds = clampRounds(totalRounds);
+    io.to(roomCode).emit('room:rounds-selected', { totalRounds: room.selectedTotalRounds });
+  });
+
+  // ---- Controller starts the game ----
+  socket.on('start-game', ({ totalRounds } = {}) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.gameStarted) return;
-    if (socket.id !== room.hostSocketId) return;
+    if (socket.id !== room.controllerSocketId) return;
 
     if (room.players.size < 3) {
-      emitStartError(room, 'Need at least 3 players to start (one judges each round, others pick).');
+      emitStartError(room, 'Need at least 3 players to start.');
       return;
     }
 
-    room.playerOrderSnapshot = Array.from(room.players.keys());
-    room.totalRounds = room.playerOrderSnapshot.length * clampTurns(turnsPerPlayer);
+    room.totalRounds = clampRounds(totalRounds);
     room.currentRoundNumber = 1;
     room.gameStarted = true;
     startRound(room, roomCode);
@@ -615,12 +652,12 @@ io.on('connection', (socket) => {
     endGameNow(room, roomCode);
   });
 
-  // ---- Host restarts with fresh scores after game-over ----
-  socket.on('play-again', ({ turnsPerPlayer } = {}) => {
+  // ---- Controller restarts with fresh scores after game-over ----
+  socket.on('play-again', ({ totalRounds } = {}) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'game-over') return;
-    if (socket.id !== room.hostSocketId) return;
+    if (socket.id !== room.controllerSocketId) return;
 
     if (room.players.size < 3) {
       emitStartError(room, 'Need at least 3 players to start a new game.');
@@ -628,73 +665,83 @@ io.on('connection', (socket) => {
     }
 
     for (const p of room.players.values()) p.score = 0;
-    room.playerOrderSnapshot = Array.from(room.players.keys());
-    room.totalRounds = room.playerOrderSnapshot.length * clampTurns(turnsPerPlayer);
+    room.totalRounds = clampRounds(totalRounds);
     room.currentRoundNumber = 1;
     room.gameStarted = true;
     io.to(roomCode).emit('room:play-again-sound');
     startRound(room, roomCode);
   });
 
-  // ---- Host returns to the lobby from final scores, without starting a new round —
-  // players stay joined (no need to rescan/rejoin), scores reset, ready to configure and
-  // start whenever the host is ready ----
-  socket.on('host:back-to-lobby', () => {
+  // ---- Controller returns to the lobby from final scores — players stay joined, scores
+  // reset, ready to configure and start whenever the controller is ready. Generates a new
+  // room code/QR for the fresh lobby, moving the host and every connected player over. ----
+  socket.on('controller:back-to-lobby', () => {
     const oldCode = socket.data.roomCode;
     const room = rooms.get(oldCode);
     if (!room || room.phase !== 'game-over') return;
-    if (socket.id !== room.hostSocketId) return;
+    if (socket.id !== room.controllerSocketId) return;
 
-    for (const p of room.players.values()) p.score = 0;
-    room.phase = 'lobby';
-    room.gameStarted = false;
-    room.currentRoundNumber = 0;
-    room.totalRounds = 0;
-    room.playerOrderSnapshot = [];
-    room.reveal = null;
-    room.promptIndex = null;
-    room.prompt = null;
-    room.seenPromptIndexes = undefined;
-
-    // Generate a fresh room code (and QR) for the new lobby, moving the host and every
-    // currently-connected player over to it — same room/players, new code to join by.
+    // Fully end the old room and start a genuinely fresh one, rather than trying to
+    // seamlessly move live socket connections across a code change — that approach broke
+    // down whenever the host happened to be mid-reconnect (its 10-minute grace window) at
+    // the exact moment "Back to Lobby" was pressed: with no live host socket to move, the
+    // host was left silently stranded pointing at a room code that had just been deleted,
+    // which is exactly what produced the stuck final-scores screen and the dead Start
+    // button. This way, every device is told explicitly where to go, and reconnects the
+    // same way a fresh join already works — no assumptions about who's currently connected.
     const newCode = makeRoomCode();
+    const oldHostSocketId = room.hostSocketId;
+    const oldPlayers = new Map(room.players);
+
     rooms.delete(oldCode);
-    rooms.set(newCode, room);
+    rooms.set(newCode, {
+      hostSocketId: null,
+      hostDisconnectTimer: null,
+      controllerSocketId: null,
+      phase: 'lobby',
+      prompt: null,
+      promptIndex: null,
+      players: new Map(),
+      gameStarted: false,
+      selectedTotalRounds: 5,
+      currentRoundNumber: 0,
+      totalRounds: 0,
+      reveal: null
+    });
 
-    socket.leave(oldCode);
-    socket.join(newCode);
-    socket.data.roomCode = newCode;
+    const hostSocket = oldHostSocketId ? io.sockets.sockets.get(oldHostSocketId) : null;
+    if (hostSocket) {
+      hostSocket.leave(oldCode);
+      hostSocket.emit('room:rejoin-new-room', { code: newCode, joinBaseUrl: getJoinBaseUrl(hostSocket) });
+    }
 
-    for (const playerId of room.players.keys()) {
+    for (const [playerId, p] of oldPlayers.entries()) {
       const playerSocket = io.sockets.sockets.get(playerId);
       if (playerSocket) {
         playerSocket.leave(oldCode);
-        playerSocket.join(newCode);
-        playerSocket.data.roomCode = newCode;
+        playerSocket.emit('room:rejoin-new-room', { code: newCode, name: p.name });
       }
     }
-
-    io.to(newCode).emit('room:back-to-lobby', {
-      code: newCode,
-      joinBaseUrl: getJoinBaseUrl(socket),
-      players: playerListPayload(room)
-    });
   });
 
-  // ---- Host removes a player from the lobby (e.g. someone from the last game who isn't
-  // playing this round) — only while still in the lobby, since removing someone mid-game
-  // would break the judge rotation and any in-progress picks ----
-  socket.on('host:remove-player', ({ playerId }) => {
+  // ---- Controller removes a player from the lobby ----
+  socket.on('controller:remove-player', ({ playerId }) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
-    if (!room || room.gameStarted) return;
-    if (socket.id !== room.hostSocketId) return;
+    // Allowed in the lobby (before/between games) and at game-over (deciding who's still in
+    // before heading back to the lobby) — not mid-game, where it could disrupt an active round.
+    if (!room || (room.phase !== 'lobby' && room.phase !== 'game-over')) return;
+    // Either the controller (from their phone) or the host (TV) can remove a stale player.
+    if (socket.id !== room.controllerSocketId && socket.id !== room.hostSocketId) return;
     if (!room.players.has(playerId)) return;
 
+    const wasController = playerId === room.controllerSocketId;
     room.players.delete(playerId);
-    // If they still happen to have a live connection (rare, but possible), disconnect them
-    // outright so they can't keep interacting with a room they've been removed from.
+    if (wasController) {
+      // Hand off to whoever's left, if anyone, rather than leaving the room without a controller.
+      room.controllerSocketId = room.players.keys().next().value || null;
+    }
+
     const playerSocket = io.sockets.sockets.get(playerId);
     if (playerSocket) {
       playerSocket.emit('room:removed-by-host');
@@ -703,38 +750,31 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
   });
 
-  // ---- Non-judge player submits/updates their pick ----
-  // track can optionally include a `youtube: { videoId, startSeconds }` field —
-  // the server doesn't need to know or care, it just stores and forwards whatever was submitted.
+  // ---- Active player submits/updates their pick ----
   socket.on('player:submit-pick', (track) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'picking') return;
 
-    const judgeId = getCurrentJudgeId(room);
-    if (socket.id === judgeId) return; // the judge doesn't submit a pick
-
     const player = room.players.get(socket.id);
-    if (!player) return;
+    if (!player || player.role !== 'active') return;
 
     player.pick = track;
     player.hasPicked = true;
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
     io.to(roomCode).emit('room:pick-submitted', { playerName: player.name });
 
-    if (allNonJudgePicked(room) && judgeId) {
-      io.to(roomCode).emit('room:all-picked');
+    if (allActivePicked(room) && room.controllerSocketId) {
+      io.to(room.controllerSocketId).emit('room:all-picked');
     }
   });
 
-  // ---- Judge requests a new random prompt mid-round ----
-  // Since the prompt changed, any picks submitted for the old one no longer make sense —
-  // they're cleared and everyone (except the judge) needs to submit again.
-  socket.on('judge:new-prompt', () => {
+  // ---- Controller requests a new random prompt mid-round ----
+  socket.on('controller:new-prompt', () => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'picking') return;
-    if (socket.id !== getCurrentJudgeId(room)) return;
+    if (socket.id !== room.controllerSocketId) return;
 
     room.promptIndex = pickPrompt(room.seenPromptIndexes);
     room.prompt = PROMPTS[room.promptIndex];
@@ -747,22 +787,19 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
   });
 
-  // ---- Judge starts the reveal ----
-  socket.on('judge:start-reveal', () => {
+  // ---- Controller starts the reveal ----
+  socket.on('controller:start-reveal', () => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'picking') return;
-    const judgeId = getCurrentJudgeId(room);
-    if (socket.id !== judgeId || !allNonJudgePicked(room)) return;
+    if (socket.id !== room.controllerSocketId || !allActivePicked(room)) return;
 
-    const picks = Array.from(room.players.entries())
-      .filter(([id, p]) => id !== judgeId && p.hasPicked && p.pick)
+    const picks = activePlayers(room)
+      .filter(([, p]) => p.hasPicked && p.pick)
       .map(([id, p]) => ({ playerSocketId: id, playerName: p.name, track: p.pick }))
       .sort(() => Math.random() - 0.5);
 
-    // subPhase 'sequential': picks are viewed one at a time, no winner button yet.
-    // subPhase 'choosing': every pick has been viewed; the judge can now crown a winner.
-    room.reveal = { picks, revealIndex: 0, subPhase: 'sequential', nowPlayingIndex: null, winnerIndex: null, canAdvance: false, advanceTimer: null };
+    room.reveal = { picks, revealIndex: 0, subPhase: 'sequential', nowPlayingIndex: null, votes: new Map(), canAdvance: false, advanceTimer: null };
     room.phase = 'reveal';
     io.to(roomCode).emit('room:reveal', {
       picks: picks.map(({ playerName, track }) => ({ playerName, track })),
@@ -771,15 +808,12 @@ io.on('connection', (socket) => {
     });
   });
 
-  // ---- Judge plays a specific pick (audio/video actually plays on the TV device) ----
-  // Plays until the clip ends naturally or the judge advances — no fixed time cap.
-  // 3 seconds after playback starts, the judge is allowed to advance (Next unlocks client-side).
-  socket.on('judge:play-pick', (index) => {
+  // ---- Controller plays a specific pick (audio/video actually plays on the TV device) ----
+  socket.on('controller:play-pick', (index) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'reveal' || !room.reveal) return;
-    if (socket.id !== getCurrentJudgeId(room)) return;
-    // During the sequential walkthrough, only the current card can be played
+    if (socket.id !== room.controllerSocketId) return;
     if (room.reveal.subPhase === 'sequential' && index !== room.reveal.revealIndex) return;
     const entry = room.reveal.picks[index];
     if (!entry) return;
@@ -789,7 +823,7 @@ io.on('connection', (socket) => {
 
     if (room.reveal.subPhase === 'sequential' && !room.reveal.canAdvance) {
       clearTimeout(room.reveal.advanceTimer);
-      const revealAtStart = room.reveal; // guards against a stale timer firing after start-reveal/next-pick replaces this object
+      const revealAtStart = room.reveal;
       room.reveal.advanceTimer = setTimeout(() => {
         if (room.reveal !== revealAtStart || room.reveal.revealIndex !== index) return;
         room.reveal.canAdvance = true;
@@ -798,27 +832,24 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ---- Judge stops playback ----
-  socket.on('judge:stop-playback', () => {
+  // ---- Controller stops playback ----
+  socket.on('controller:stop-playback', () => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || !room.reveal) return;
-    if (socket.id !== getCurrentJudgeId(room)) return;
+    if (socket.id !== room.controllerSocketId) return;
 
     room.reveal.nowPlayingIndex = null;
-    // If they stopped before the 3s mark, cancel the pending unlock — they'll need
-    // to press play again. If it already unlocked, stopping doesn't re-lock it.
     if (!room.reveal.canAdvance) clearTimeout(room.reveal.advanceTimer);
     io.to(roomCode).emit('room:stop-playback');
   });
 
-  // ---- Judge advances from the current pick to the next one in the walkthrough ----
-  // Requires at least 3 seconds of playback (or the clip ending naturally) so it can't be skipped untouched.
-  socket.on('judge:next-pick', () => {
+  // ---- Controller advances from the current pick to the next one ----
+  socket.on('controller:next-pick', () => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'reveal' || !room.reveal) return;
-    if (socket.id !== getCurrentJudgeId(room)) return;
+    if (socket.id !== room.controllerSocketId) return;
     if (room.reveal.subPhase !== 'sequential') return;
     if (!room.reveal.canAdvance) return;
 
@@ -837,7 +868,6 @@ io.on('connection', (socket) => {
   });
 
   // ---- TV reports that a clip finished entirely on its own ----
-  // Also unlocks Next immediately as a safety net, in case a clip happens to run under 3 seconds.
   socket.on('host:playback-ended', () => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
@@ -847,45 +877,79 @@ io.on('connection', (socket) => {
     if (room.reveal.subPhase === 'sequential' && !room.reveal.canAdvance) {
       clearTimeout(room.reveal.advanceTimer);
       room.reveal.canAdvance = true;
-      const judgeId = getCurrentJudgeId(room);
-      if (judgeId) io.to(judgeId).emit('room:can-advance');
+      if (room.controllerSocketId) io.to(room.controllerSocketId).emit('room:can-advance');
     }
     io.to(roomCode).emit('room:stop-playback');
   });
 
-
-
-  // ---- Judge crowns a winner: +100 points to that player ----
-  socket.on('judge:choose-winner', (index) => {
+  // ---- Any player or audience member casts their vote for this round's favorite song —
+  // everyone gets exactly one vote, and can't vote for their own submission ----
+  socket.on('player:cast-vote', (index) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'reveal' || !room.reveal) return;
-    if (socket.id !== getCurrentJudgeId(room)) return;
-    if (room.reveal.subPhase !== 'choosing') return; // must view every pick first
-    if (room.reveal.winnerIndex !== null) return; // already decided this round
+    if (room.reveal.subPhase !== 'choosing') return;
 
     const entry = room.reveal.picks[index];
     if (!entry) return;
+    if (entry.playerSocketId === socket.id) return; // can't vote for your own song
 
-    room.reveal.winnerIndex = index;
-    const winnerPlayer = room.players.get(entry.playerSocketId);
-    if (winnerPlayer) winnerPlayer.score += 100;
+    // Tapping the song you already voted for deselects it; tapping a different one changes
+    // your vote to that song instead.
+    if (room.reveal.votes.get(socket.id) === index) {
+      room.reveal.votes.delete(socket.id);
+      socket.emit('room:vote-recorded', { index: null });
+    } else {
+      room.reveal.votes.set(socket.id, index);
+      socket.emit('room:vote-recorded', { index });
+    }
+    io.to(roomCode).emit('room:players-updated', playerListPayload(room));
 
-    io.to(roomCode).emit('room:winner-chosen', {
-      index,
-      playerName: entry.playerName,
+    if (allVoted(room) && room.controllerSocketId) {
+      io.to(room.controllerSocketId).emit('room:all-voted');
+    } else if (room.controllerSocketId) {
+      // A deselect (or a vote changing hands) can make an already-complete tally incomplete
+      // again — make sure "Reveal results" doesn't stay enabled if that happens.
+      io.to(room.controllerSocketId).emit('room:vote-incomplete');
+    }
+  });
+
+  // ---- Controller reveals the results: tallies votes, awards 100 points per vote ----
+  socket.on('controller:reveal-results', () => {
+    const roomCode = socket.data.roomCode;
+    const room = rooms.get(roomCode);
+    if (!room || room.phase !== 'reveal' || !room.reveal) return;
+    if (socket.id !== room.controllerSocketId) return;
+    if (room.reveal.subPhase !== 'choosing') return;
+    if (room.reveal.resultsRevealed) return;
+
+    const voteCounts = new Array(room.reveal.picks.length).fill(0);
+    for (const votedIndex of room.reveal.votes.values()) {
+      if (voteCounts[votedIndex] !== undefined) voteCounts[votedIndex] += 1;
+    }
+    room.reveal.picks.forEach((entry, i) => {
+      const points = voteCounts[i] * 100;
+      if (points > 0) {
+        const player = room.players.get(entry.playerSocketId);
+        if (player) player.score += points;
+      }
+    });
+    room.reveal.resultsRevealed = true;
+
+    io.to(roomCode).emit('room:results-revealed', {
+      voteCounts,
       scoreboard: buildScoreboard(room)
     });
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
   });
 
-  // ---- Judge advances to the next round (or ends the game) ----
-  socket.on('judge:next-round', () => {
+  // ---- Controller advances to the next round (or ends the game) ----
+  socket.on('controller:next-round', () => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room || room.phase !== 'reveal' || !room.reveal) return;
-    if (socket.id !== getCurrentJudgeId(room)) return;
-    if (room.reveal.winnerIndex === null) return; // must crown a winner first
+    if (socket.id !== room.controllerSocketId) return;
+    if (!room.reveal.resultsRevealed) return;
 
     advanceRoundOrEndGame(room, roomCode);
   });
@@ -897,28 +961,24 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     if (socket.data.role === 'host') {
-      // Give the host a window to reconnect (network drop, accidental refresh, laptop
-      // sleep, or a mobile browser reloading the tab) before actually ending the game —
-      // only if they never come back within this window does everyone get notified.
       room.hostSocketId = null;
       room.hostDisconnectTimer = setTimeout(() => {
         io.to(roomCode).emit('room:host-left');
         rooms.delete(roomCode);
-      }, 10 * 60 * 1000); // 10 minutes
+      }, 10 * 60 * 1000);
       return;
     }
 
     const player = room.players.get(socket.id);
 
-    // Once the game has started, keep a disconnected player's data (score, pick, place in the
-    // judge rotation) so they can reclaim it by rejoining with the same name — only remove them
-    // outright if they were still just sitting in the lobby, where there's nothing to preserve.
-    // If the current judge disconnects, the round simply waits for them to reconnect rather
-    // than being auto-skipped, since they can now pick back up right where they left off.
     if (room.gameStarted && player) {
       player.connected = false;
     } else {
       room.players.delete(socket.id);
+      if (room.controllerSocketId === socket.id) {
+        // Hand off to whoever's left, if anyone, so the room isn't left without a controller
+        room.controllerSocketId = room.players.keys().next().value || null;
+      }
     }
 
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
