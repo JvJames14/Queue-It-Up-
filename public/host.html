@@ -588,18 +588,28 @@
     });
   }
 
-  const savedRoomCode = loadHostRoomCode();
-  if (savedRoomCode) {
-    socket.emit('host:resume-room', { code: savedRoomCode }, (res) => {
-      if (res.ok) {
-        applyRoomCodeAndQr(res);
-      } else {
-        createFreshRoom();
-      }
-    });
-  } else {
-    createFreshRoom();
-  }
+  // Runs on every connection, not just the first one — this is the fix for the host screen
+  // silently falling out of sync mid-game. Socket.io reconnects the underlying network
+  // connection automatically after any brief drop (Wi-Fi hiccups on a shared party network
+  // are common over a long session), but that reconnection gets a brand-new socket id with
+  // no association to any room at all. Without re-running this, the host's new connection
+  // would never rejoin the room's broadcast channel — explaining both symptoms at once: the
+  // display silently stops updating (it's no longer receiving "someone picked/voted"
+  // broadcasts), and it stops reacting to the controller (same reason, same channel).
+  socket.on('connect', () => {
+    const savedRoomCode = loadHostRoomCode();
+    if (savedRoomCode) {
+      socket.emit('host:resume-room', { code: savedRoomCode }, (res) => {
+        if (res.ok) {
+          applyRoomCodeAndQr(res);
+        } else {
+          createFreshRoom();
+        }
+      });
+    } else {
+      createFreshRoom();
+    }
+  });
 
   // Two-tap inline confirmation (no browser popup) for the one control that stays on this screen.
   let endGameArmed = false;
