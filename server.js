@@ -7,7 +7,16 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+// Tighter heartbeat than the defaults (25s interval / 20s timeout, up to ~45s worst case) —
+// on a TV/console device especially, a flaky Wi-Fi connection can go "zombie" (the browser
+// still thinks it's connected, but no packets are actually getting through) well before the
+// default settings would notice and force a real reconnect. Detecting that faster means the
+// existing reconnect-and-resync logic kicks in sooner instead of leaving a stale, silently
+// broken connection in place for tens of seconds.
+const io = new Server(server, {
+  pingInterval: 10000,
+  pingTimeout: 8000
+});
 const PORT = process.env.PORT || 3000;
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
@@ -504,7 +513,17 @@ io.on('connection', (socket) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     if (!room) return ack?.({ ok: false });
-    ack?.({ ok: true, players: playerListPayload(room) });
+    ack?.({
+      ok: true,
+      players: playerListPayload(room),
+      phase: room.phase,
+      reveal: room.reveal ? {
+        picks: room.reveal.picks.map(({ playerName, track }) => ({ playerName, track })),
+        revealIndex: room.reveal.revealIndex,
+        subPhase: room.reveal.subPhase,
+        nowPlayingIndex: room.reveal.nowPlayingIndex
+      } : null
+    });
   });
 
   // ---- Player joins a room ----

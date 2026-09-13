@@ -55,6 +55,14 @@
     font-family: 'Fredoka', sans-serif;
   }
   #end-game-btn.confirm-armed { background: #ff8a3d; color: #201827; }
+  #reconnect-btn {
+    position: fixed; bottom: 2cqh; left: 2cqw; z-index: 500;
+    background: #302b4a; color: var(--text); border: none; border-radius: 999px;
+    padding: 1.8cqh 3.3cqw; font-size: 1.95cqmin; font-weight: 700; cursor: pointer;
+    font-family: 'Fredoka', sans-serif; opacity: 0.55;
+  }
+  #reconnect-btn.reconnecting { background: var(--accent-2); color: #fff; opacity: 1; cursor: default; }
+  .tv-frame:has(#start-view:not(.hidden)) #reconnect-btn { display: none; }
   .tv-frame:has(#lobby-view:not(.hidden)) #end-game-btn,
   .tv-frame:has(#gameover-view:not(.hidden)) #end-game-btn,
   .tv-frame:has(#start-view:not(.hidden)) #end-game-btn { display: none; }
@@ -276,6 +284,7 @@
   </div>
 </div>
 <button id="end-game-btn">End Game</button>
+<button id="reconnect-btn" title="If the screen seems stuck or out of sync, tap this to refresh the connection">↻ Refresh Connection</button>
 <div class="wrap">
   <div id="lobby-view">
     <div class="lobby-top-row">
@@ -585,6 +594,11 @@
       if (!res.ok) return;
       saveHostRoomCode(res.code);
       applyRoomCodeAndQr(res);
+      if (isManuallyReconnecting) {
+        isManuallyReconnecting = false;
+        reconnectBtn.classList.remove('reconnecting');
+        reconnectBtn.textContent = '↻ Refresh Connection';
+      }
     });
   }
 
@@ -596,6 +610,29 @@
   // would never rejoin the room's broadcast channel — explaining both symptoms at once: the
   // display silently stops updating (it's no longer receiving "someone picked/voted"
   // broadcasts), and it stops reacting to the controller (same reason, same channel).
+  const reconnectBtn = document.getElementById('reconnect-btn');
+  let isManuallyReconnecting = false;
+  reconnectBtn.addEventListener('click', () => {
+    if (isManuallyReconnecting) return;
+    isManuallyReconnecting = true;
+    reconnectBtn.classList.add('reconnecting');
+    reconnectBtn.textContent = 'Reconnecting…';
+    // Tearing down and re-establishing the connection from scratch is the fix for a "zombie"
+    // connection (one the browser still thinks is fine but actually isn't) — cheaper than a
+    // full page reload since it skips re-downloading assets and re-initializing the YouTube
+    // player, but otherwise triggers the exact same resume-and-resync path below.
+    socket.disconnect();
+    socket.connect();
+    // Fallback in case there's a genuine, longer-lasting outage and 'connect' never fires —
+    // don't leave the button stuck saying "Reconnecting…" forever with no way to try again.
+    setTimeout(() => {
+      if (!isManuallyReconnecting) return;
+      isManuallyReconnecting = false;
+      reconnectBtn.classList.remove('reconnecting');
+      reconnectBtn.textContent = '↻ Refresh Connection';
+    }, 10000);
+  });
+
   socket.on('connect', () => {
     const savedRoomCode = loadHostRoomCode();
     if (savedRoomCode) {
@@ -604,6 +641,11 @@
           applyRoomCodeAndQr(res);
         } else {
           createFreshRoom();
+        }
+        if (isManuallyReconnecting) {
+          isManuallyReconnecting = false;
+          reconnectBtn.classList.remove('reconnecting');
+          reconnectBtn.textContent = '↻ Refresh Connection';
         }
       });
     } else {
@@ -619,6 +661,46 @@
       if (!res || !res.ok) return;
       renderPlayerChips(lobbyPlayersListEl, res.players, false, true);
       renderPlayerChips(arenaPlayersListEl, res.players, true);
+
+      // Same idea for the reveal/playback screen — if a "next song" or "everyone's voted"
+      // broadcast is ever missed, this brings the display back in sync within a few seconds
+      // instead of leaving it stuck on a stale song or an unfinished sequential walkthrough.
+      // Deliberately does NOT touch what's actually playing (audio/video) — only which card
+      // is shown — so this can't itself cause a song to restart or cut out.
+      if (res.phase === 'reveal' && res.reveal) {
+        const picksMismatch = revealPicks.length !== res.reveal.picks.length
+          || JSON.stringify(revealPicks) !== JSON.stringify(res.reveal.picks);
+
+        if (currentPhase !== 'reveal' || picksMismatch) {
+          revealPicks = res.reveal.picks;
+          revealSubPhase = res.reveal.subPhase;
+          currentRevealIndex = res.reveal.revealIndex;
+          currentPhase = 'reveal';
+          pickingStatusEl.textContent = '';
+          if (revealSubPhase === 'sequential') {
+            showSequentialCard();
+          } else {
+            sequentialView.classList.add('hidden');
+            roundLabelEl.classList.remove('hidden');
+            judgeBannerEl.classList.remove('hidden');
+            promptBoxEl.classList.remove('hidden');
+            gameView.classList.add('choosing-chrome');
+            renderFullRevealList();
+          }
+        } else if (revealSubPhase === 'sequential' && res.reveal.subPhase === 'sequential' && res.reveal.revealIndex !== currentRevealIndex) {
+          currentRevealIndex = res.reveal.revealIndex;
+          showSequentialCard();
+        } else if (revealSubPhase !== 'choosing' && res.reveal.subPhase === 'choosing') {
+          revealSubPhase = 'choosing';
+          sequentialView.classList.add('hidden');
+          stopAllPlayback();
+          roundLabelEl.classList.remove('hidden');
+          judgeBannerEl.classList.remove('hidden');
+          promptBoxEl.classList.remove('hidden');
+          gameView.classList.add('choosing-chrome');
+          renderFullRevealList();
+        }
+      }
     });
   }, 3000);
 
