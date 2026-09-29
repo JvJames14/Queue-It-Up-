@@ -465,7 +465,7 @@
   let currentSession = null;
 
   function attemptJoin(name, code, silent, retriesLeft) {
-    if (retriesLeft === undefined) retriesLeft = 3;
+    if (retriesLeft === undefined) retriesLeft = 5;
     if (silent) {
       joinView.classList.add('hidden');
       lobbyWaitView.classList.remove('hidden');
@@ -484,7 +484,7 @@
         // away tends to read as "you can't rejoin at all," which isn't accurate.
         const isAlreadyStartedError = res.error && res.error.toLowerCase().includes('already started');
         if (isAlreadyStartedError && retriesLeft > 0) {
-          setTimeout(() => attemptJoin(name, code, silent, retriesLeft - 1), 800);
+          setTimeout(() => attemptJoin(name, code, silent, retriesLeft - 1), 2000);
           return;
         }
         joinView.classList.remove('hidden');
