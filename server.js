@@ -418,7 +418,13 @@ function sendCatchUpState(socket, room) {
       if (me && room.reveal.votes.has(socket.id)) {
         socket.emit('room:vote-recorded', { index: room.reveal.votes.get(socket.id) });
       }
-      if (socket.id === room.controllerSocketId && allVoted(room)) {
+      if (room.reveal.resultsRevealed) {
+        const voteCounts = new Array(room.reveal.picks.length).fill(0);
+        for (const votedIndex of room.reveal.votes.values()) {
+          if (voteCounts[votedIndex] !== undefined) voteCounts[votedIndex] += 1;
+        }
+        socket.emit('room:results-revealed', { voteCounts, scoreboard: buildScoreboard(room) });
+      } else if (socket.id === room.controllerSocketId && allVoted(room)) {
         socket.emit('room:all-voted');
       }
     }
@@ -451,6 +457,16 @@ function sendHostCatchUpState(socket, room) {
     });
     if (room.reveal.subPhase === 'choosing') {
       socket.emit('room:reveal-choosing');
+      // If results were already revealed before this reconnect, resend them too — otherwise
+      // the display resets to the plain pre-results vote list, silently wiping the vote
+      // counts/winner badges that were already showing.
+      if (room.reveal.resultsRevealed) {
+        const voteCounts = new Array(room.reveal.picks.length).fill(0);
+        for (const votedIndex of room.reveal.votes.values()) {
+          if (voteCounts[votedIndex] !== undefined) voteCounts[votedIndex] += 1;
+        }
+        socket.emit('room:results-revealed', { voteCounts, scoreboard: buildScoreboard(room) });
+      }
     } else if (room.reveal.nowPlayingIndex !== null && room.reveal.nowPlayingIndex !== undefined) {
       const entry = room.reveal.picks[room.reveal.nowPlayingIndex];
       if (entry) {
@@ -570,7 +586,13 @@ io.on('connection', (socket) => {
       socket.data.roomCode = roomCode;
       socket.data.role = 'player';
 
-      ack?.({ ok: true, reconnected: true });
+      // This was missing role/isController entirely — meaning a reconnecting client never
+      // learned it was still the controller (or still active/audience), even though the
+      // server-side state was already correctly preserved/transferred above. The client only
+      // sets isController when the ack explicitly says so, so this silently left a
+      // reconnecting controller's own client thinking it wasn't the controller at all —
+      // showing stale/wrong UI until something else (like a manual handoff) corrected it.
+      ack?.({ ok: true, reconnected: true, role: playerData.role, isController: socket.id === room.controllerSocketId });
       sendCatchUpState(socket, room);
       io.to(roomCode).emit('room:players-updated', playerListPayload(room));
       return;
@@ -705,6 +727,18 @@ io.on('connection', (socket) => {
     const room = rooms.get(oldCode);
     if (!room || room.phase !== 'game-over') return;
     if (socket.id !== room.hostSocketId) return;
+
+    // This is specifically the "start over with a clean slate" action — force every
+    // previously-connected player back to their join screen entirely, rather than leaving
+    // them dangling in a room that's about to cease to exist. (Contrast with "Back to Lobby",
+    // which is controller-driven and deliberately brings existing players along instead.)
+    for (const playerId of room.players.keys()) {
+      const playerSocket = io.sockets.sockets.get(playerId);
+      if (playerSocket) {
+        playerSocket.leave(oldCode);
+        playerSocket.emit('room:kicked-to-join');
+      }
+    }
 
     rooms.delete(oldCode);
     const newCode = makeRoomCode();

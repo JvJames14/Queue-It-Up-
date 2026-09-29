@@ -1242,6 +1242,22 @@
     alert("The host removed you from this game.");
   });
 
+  // The host started an entirely fresh room from final scores — this is the "clean slate"
+  // action specifically, so every previous player gets sent all the way back to the join
+  // screen rather than being left dangling in a room that no longer exists.
+  socket.on('room:kicked-to-join', () => {
+    currentSession = null;
+    isController = false;
+    try { localStorage.removeItem(SAVED_JOIN_KEY); } catch (e) {}
+    gameView.classList.add('hidden');
+    gameoverView.classList.add('hidden');
+    lobbyWaitView.classList.add('hidden');
+    joinView.classList.remove('hidden');
+    codeInput.value = '';
+    joinError.classList.remove('connecting');
+    joinError.textContent = 'The host started a new room — enter the new code to rejoin.';
+  });
+
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
