@@ -268,6 +268,11 @@ const ROUND_OPTIONS = [5, 10, 15];
  * }>
  */
 const rooms = new Map();
+// Maps an old room code to whatever it was replaced by (via "Create New Room"), so a player
+// who was disconnected at that moment — and therefore never got the message telling them to
+// rejoin under the new code — doesn't just silently fail when their browser eventually tries
+// to reconnect using the old one it still has saved.
+const roomRedirects = new Map();
 
 function makeRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -548,8 +553,18 @@ io.on('connection', (socket) => {
   // very first person to join becomes the controller — the player who drives the whole
   // game (starting it, revealing picks, advancing rounds) — until/unless they hand it off.
   socket.on('player:join', ({ code, name }, ack) => {
-    const roomCode = (code || '').trim().toUpperCase();
-    const room = rooms.get(roomCode);
+    let roomCode = (code || '').trim().toUpperCase();
+    let room = rooms.get(roomCode);
+    // Follow any chain of redirects (e.g. "Create New Room" happened while this player was
+    // disconnected, or happened more than once before they reconnected) to find whatever
+    // room they should actually land in now, instead of just failing because the code they
+    // still have saved points at something that no longer exists.
+    let wasRedirected = false;
+    while (!room && roomRedirects.has(roomCode)) {
+      roomCode = roomRedirects.get(roomCode);
+      room = rooms.get(roomCode);
+      wasRedirected = true;
+    }
     if (!room) return ack?.({ ok: false, error: 'Room not found. Check the code.' });
 
     const cleanName = (name || '').trim().slice(0, 16) || 'Player';
@@ -592,7 +607,7 @@ io.on('connection', (socket) => {
       // sets isController when the ack explicitly says so, so this silently left a
       // reconnecting controller's own client thinking it wasn't the controller at all —
       // showing stale/wrong UI until something else (like a manual handoff) corrected it.
-      ack?.({ ok: true, reconnected: true, role: playerData.role, isController: socket.id === room.controllerSocketId });
+      ack?.({ ok: true, reconnected: true, role: playerData.role, isController: socket.id === room.controllerSocketId, code: wasRedirected ? roomCode : undefined });
       sendCatchUpState(socket, room);
       io.to(roomCode).emit('room:players-updated', playerListPayload(room));
       return;
@@ -627,7 +642,7 @@ io.on('connection', (socket) => {
     socket.data.roomCode = roomCode;
     socket.data.role = 'player';
 
-    ack?.({ ok: true, role, isController: socket.id === room.controllerSocketId });
+    ack?.({ ok: true, role, isController: socket.id === room.controllerSocketId, code: wasRedirected ? roomCode : undefined });
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
     io.to(roomCode).emit('room:player-joined', { name: cleanName });
   });
@@ -638,7 +653,13 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     if (!room) return;
     if (socket.id !== room.controllerSocketId) return;
-    if (!room.players.has(playerId)) return;
+    const targetPlayer = room.players.get(playerId);
+    if (!targetPlayer) return;
+    // A disconnected player's client isn't there to receive the resync this handoff sends —
+    // it would only ever get sorted out once they manually reload the page. Blocking this
+    // outright is simpler and safer than trying to make that resync work retroactively for a
+    // connection that doesn't exist yet.
+    if (targetPlayer.connected === false) return;
 
     const oldControllerId = room.controllerSocketId;
     room.controllerSocketId = playerId;
@@ -719,12 +740,13 @@ io.on('connection', (socket) => {
   });
 
   // ---- Host force-ends the current game at any point, jumping straight to final scores ----
-  socket.on('host:end-game', () => {
+  socket.on('host:end-game', (_data, ack) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
-    if (!room || !room.gameStarted || room.phase === 'game-over') return;
-    if (socket.id !== room.hostSocketId) return;
+    if (!room || !room.gameStarted || room.phase === 'game-over') return ack?.({ ok: false });
+    if (socket.id !== room.hostSocketId) return ack?.({ ok: false });
     endGameNow(room, roomCode);
+    ack?.({ ok: true });
   });
 
   // ---- Host starts an entirely fresh room from the final-scores screen — no player
@@ -738,6 +760,11 @@ io.on('connection', (socket) => {
     if (socket.id !== room.hostSocketId) return;
 
     const newCode = makeRoomCode();
+    roomRedirects.set(oldCode, newCode);
+    // Redirects don't need to live forever — clean up after a generous window so this never
+    // grows unbounded across a long-running server process.
+    setTimeout(() => roomRedirects.delete(oldCode), 10 * 60 * 1000);
+
     // Preserve who was running the game by name, not by socket id (which won't survive into
     // the new room) — otherwise the new room's "first to join becomes controller" rule turns
     // this into a race, and whoever's phone reconnects fastest ends up in charge instead of

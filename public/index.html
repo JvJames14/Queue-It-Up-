@@ -496,10 +496,17 @@
         joinBtn.disabled = false;
         return;
       }
-      currentSession = { name, code };
-      saveJoinInfo(name, code);
+      currentSession = { name, code: res.code || code };
+      saveJoinInfo(name, res.code || code);
       if (res.role) myRole = res.role;
       if (res.isController) isController = true;
+      // Reset to a safe baseline — if the game is actually further along than the lobby,
+      // the catch-up events that immediately follow this ack (round-started/reveal/etc.)
+      // will correctly override it a moment later. Without this, a player who rejoins
+      // without a full page reload (e.g. after "Create New Room") keeps whatever stale
+      // phase their browser was last showing from the previous game, which was silently
+      // gating controller-only UI like the Start Game button.
+      currentPhase = 'lobby';
       joinView.classList.add('hidden');
       lobbyWaitView.classList.remove('hidden');
       lobbyWaitText.textContent = res.reconnected
@@ -529,7 +536,11 @@
   socket.on('connect', () => {
     if (currentSession) {
       reconnectBanner.classList.add('hidden');
-      socket.emit('player:join', currentSession, () => {});
+      // Routed through attemptJoin (rather than a bare emit with an empty callback, which is
+      // what this used to be) so a genuine failure here — e.g. the room is truly gone and
+      // there's no redirect for it — actually surfaces on screen instead of leaving the
+      // player silently stuck on whatever their last screen happened to be.
+      attemptJoin(currentSession.name, currentSession.code, true);
     }
   });
   socket.on('disconnect', () => {
@@ -611,10 +622,15 @@
       const makeHostBtn = document.createElement('button');
       makeHostBtn.textContent = 'Make host';
       makeHostBtn.className = 'primary';
-      makeHostBtn.addEventListener('click', () => {
-        socket.emit('controller:assign-new-host', { playerId: p.id });
-        assignHostList.classList.add('hidden');
-      });
+      if (p.connected === false) {
+        makeHostBtn.disabled = true;
+        makeHostBtn.title = "Can't make a reconnecting player host";
+      } else {
+        makeHostBtn.addEventListener('click', () => {
+          socket.emit('controller:assign-new-host', { playerId: p.id });
+          assignHostList.classList.add('hidden');
+        });
+      }
 
       row.appendChild(makeHostBtn);
       assignHostList.appendChild(row);

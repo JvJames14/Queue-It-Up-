@@ -731,8 +731,32 @@
       return;
     }
     resetEndGameBtn();
-    socket.emit('host:end-game');
+    sendEndGame();
   });
+
+  function sendEndGame() {
+    let confirmed = false;
+    socket.emit('host:end-game', {}, (res) => {
+      confirmed = true;
+      // A response of ok:false means the command genuinely reached the server but the game
+      // was already over or something else changed — no need to retry, the button just
+      // silently does nothing further, matching the original behavior for that case.
+    });
+    // If the command never even reaches the server (a "zombie" connection — the browser
+    // thinks it's fine but no packets are actually getting through), no ack ever comes back
+    // and the button used to just silently do nothing until the person separately noticed
+    // and hit "Refresh Connection" themselves. This makes that recovery automatic: force a
+    // reconnect and resend the command once the connection is genuinely restored.
+    setTimeout(() => {
+      if (confirmed) return;
+      socket.disconnect();
+      socket.connect();
+      socket.once('connect', () => {
+        setTimeout(() => socket.emit('host:end-game'), 500);
+      });
+    }, 3000);
+  }
+
   function resetEndGameBtn() {
     endGameArmed = false;
     clearTimeout(endGameResetTimer);
