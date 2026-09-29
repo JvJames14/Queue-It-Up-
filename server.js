@@ -607,7 +607,7 @@ io.on('connection', (socket) => {
       // sets isController when the ack explicitly says so, so this silently left a
       // reconnecting controller's own client thinking it wasn't the controller at all —
       // showing stale/wrong UI until something else (like a manual handoff) corrected it.
-      ack?.({ ok: true, reconnected: true, role: playerData.role, isController: socket.id === room.controllerSocketId, code: wasRedirected ? roomCode : undefined });
+      ack?.({ ok: true, reconnected: true, role: playerData.role, isController: socket.id === room.controllerSocketId, code: wasRedirected ? roomCode : undefined, gameStarted: room.gameStarted });
       sendCatchUpState(socket, room);
       io.to(roomCode).emit('room:players-updated', playerListPayload(room));
       return;
@@ -923,6 +923,27 @@ io.on('connection', (socket) => {
 
     if (allActivePicked(room) && room.controllerSocketId) {
       io.to(room.controllerSocketId).emit('room:all-picked');
+    }
+  });
+
+  // ---- Active player goes back to choose a different song before the reveal starts ----
+  socket.on('player:unpick', () => {
+    const roomCode = socket.data.roomCode;
+    const room = rooms.get(roomCode);
+    if (!room || room.phase !== 'picking') return;
+
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'active' || !player.hasPicked) return;
+
+    player.hasPicked = false;
+    player.pick = null;
+    io.to(roomCode).emit('room:players-updated', playerListPayload(room));
+
+    // If the room was previously in an "everyone's picked" state, it no longer is — make
+    // sure the controller's Reveal button can't stay enabled on stale information now that
+    // one of those picks has been withdrawn.
+    if (room.controllerSocketId) {
+      io.to(room.controllerSocketId).emit('room:picks-incomplete');
     }
   });
 

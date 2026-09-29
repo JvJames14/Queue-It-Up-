@@ -508,8 +508,16 @@
       // gating controller-only UI like the Start Game button.
       currentPhase = 'lobby';
       joinView.classList.add('hidden');
+      // These weren't being hidden here — if this join followed rejoining a lobby (e.g. after
+      // "Create New Room") without a full page reload, whatever screen was last visible (the
+      // previous game's final scores, most likely) stayed layered underneath.
+      gameView.classList.add('hidden');
+      gameoverView.classList.add('hidden');
       lobbyWaitView.classList.remove('hidden');
-      lobbyWaitText.textContent = res.reconnected
+      // "Welcome back" only makes sense when reconnecting to a game actually in progress —
+      // rejoining a still-empty lobby (e.g. right after "Create New Room") should read the
+      // same as any other fresh join, since there's nothing to "reconnect to" yet.
+      lobbyWaitText.textContent = (res.reconnected && res.gameStarted)
         ? "Welcome back! Reconnecting you to the game…"
         : "You're in! Waiting for the game to start…";
       updateControllerLobbyUI();
@@ -648,6 +656,7 @@
     hasSubmittedThisRound = false;
     pickSubmittedView.classList.add('hidden');
     pickerPanel.classList.remove('hidden');
+    socket.emit('player:unpick');
   });
 
   // ---- Round lifecycle ----
@@ -771,6 +780,11 @@
     judgeStatusEl.textContent = 'Everyone has picked! Ready to reveal.';
     judgeRevealBtn.disabled = false;
     judgeNewPromptBtn.classList.add('hidden');
+  });
+
+  socket.on('room:picks-incomplete', () => {
+    judgeRevealBtn.disabled = true;
+    judgeNewPromptBtn.classList.remove('hidden');
   });
 
   socket.on('room:already-picked', () => {
