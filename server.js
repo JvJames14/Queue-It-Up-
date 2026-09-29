@@ -540,8 +540,15 @@ io.on('connection', (socket) => {
 
     // Reconnection: if this name matches someone who disconnected mid-game, reclaim their
     // existing slot (role, score, current pick all preserved) instead of a fresh join.
+    // Matches on the connected flag OR on the old socket genuinely no longer being a live
+    // connection — a page refresh opens the new connection and can send this join request
+    // before the server has finished processing the old connection's disconnect event, so
+    // relying on the flag alone is a real timing race. Checking the actual connection
+    // registry sidesteps that: if the old socket is truly gone, this is a legitimate
+    // reconnect regardless of whether our own bookkeeping has caught up yet.
     const reconnectEntry = Array.from(room.players.entries())
-      .find(([, p]) => p.connected === false && p.name.toLowerCase() === cleanName.toLowerCase());
+      .find(([id, p]) => id !== socket.id && p.name.toLowerCase() === cleanName.toLowerCase()
+        && (p.connected === false || !io.sockets.sockets.has(id)));
 
     if (reconnectEntry) {
       const [oldSocketId, playerData] = reconnectEntry;
@@ -897,7 +904,12 @@ io.on('connection', (socket) => {
       room.reveal.advanceTimer = setTimeout(() => {
         if (room.reveal !== revealAtStart || room.reveal.revealIndex !== index) return;
         room.reveal.canAdvance = true;
-        io.to(socket.id).emit('room:can-advance');
+        // Use the room's CURRENT controller, not the socket that happened to call
+        // controller:play-pick when this timer was originally set — if a handoff happened
+        // in the meantime, that original caller may no longer be the controller at all, and
+        // sending it there would leave whoever's actually in control with no signal ever
+        // telling them the "Next" button should appear.
+        if (room.controllerSocketId) io.to(room.controllerSocketId).emit('room:can-advance');
       }, 3000);
     }
   });
