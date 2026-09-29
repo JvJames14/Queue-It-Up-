@@ -1254,6 +1254,11 @@
     gameoverView.classList.add('hidden');
     lobbyWaitView.classList.add('hidden');
     joinView.classList.remove('hidden');
+    // This was left visible for a controller specifically — isController flips to false
+    // above, but nothing was telling the persistent "Manage players" panel to actually hide
+    // itself, so it could stay parked wherever it last was and visually clutter or obscure
+    // the join form underneath.
+    controllerManagePanel.classList.add('hidden');
     if (myName) nameInput.value = myName;
     codeInput.value = newCode || '';
     joinError.classList.remove('connecting');

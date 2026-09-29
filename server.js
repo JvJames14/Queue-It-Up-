@@ -612,7 +612,16 @@ io.on('connection', (socket) => {
     const role = activeCount < MAX_ACTIVE_PLAYERS ? 'active' : 'audience';
 
     room.players.set(socket.id, { name: cleanName, role, pick: null, hasPicked: false, score: 0, connected: true });
-    if (!room.controllerSocketId) room.controllerSocketId = socket.id;
+    // If this room was seeded with a specific person to hand control back to (see
+    // host:create-new-room), honor that over the plain "first to join" rule — otherwise
+    // whoever happens to be first to type in the new code becomes the new controller, which
+    // could easily not be the person who was actually running the game a moment ago.
+    if (room.pendingControllerName && cleanName.toLowerCase() === room.pendingControllerName.toLowerCase()) {
+      room.controllerSocketId = socket.id;
+      room.pendingControllerName = null;
+    } else if (!room.controllerSocketId) {
+      room.controllerSocketId = socket.id;
+    }
 
     socket.join(roomCode);
     socket.data.roomCode = roomCode;
@@ -729,6 +738,12 @@ io.on('connection', (socket) => {
     if (socket.id !== room.hostSocketId) return;
 
     const newCode = makeRoomCode();
+    // Preserve who was running the game by name, not by socket id (which won't survive into
+    // the new room) — otherwise the new room's "first to join becomes controller" rule turns
+    // this into a race, and whoever's phone reconnects fastest ends up in charge instead of
+    // the person who was actually running things, with no obvious way to tell why.
+    const previousController = room.players.get(room.controllerSocketId);
+    const pendingControllerName = previousController ? previousController.name : null;
 
     // This is specifically the "start over with a clean slate" action — force every
     // previously-connected player back to their join screen entirely, rather than leaving
@@ -749,6 +764,7 @@ io.on('connection', (socket) => {
       hostSocketId: socket.id,
       hostDisconnectTimer: null,
       controllerSocketId: null,
+      pendingControllerName,
       phase: 'lobby',
       prompt: null,
       promptIndex: null,
