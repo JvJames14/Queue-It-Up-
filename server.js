@@ -636,6 +636,13 @@ io.on('connection', (socket) => {
           if (room.reveal.votes.has(id)) {
             targetSocket.emit('room:vote-recorded', { index: room.reveal.votes.get(id) });
           }
+        } else if (room.reveal.canAdvance) {
+          // 'room:reveal' resets the client's "can advance" state to false unconditionally
+          // (it doesn't know any better) — if the song had already finished playing (or its
+          // minimum listen time had already elapsed) before this handoff happened, the "Next"
+          // button needs to be explicitly re-signaled here, or it stays permanently hidden
+          // with no future event left to ever re-enable it.
+          targetSocket.emit('room:can-advance');
         }
       });
       if (room.reveal.subPhase === 'choosing' && allVoted(room)) {
@@ -680,6 +687,39 @@ io.on('connection', (socket) => {
     if (!room || !room.gameStarted || room.phase === 'game-over') return;
     if (socket.id !== room.hostSocketId) return;
     endGameNow(room, roomCode);
+  });
+
+  // ---- Host starts an entirely fresh room from the final-scores screen — no player
+  // migration, since this is specifically for the "some/most players have left, start clean"
+  // scenario rather than continuing with whoever's still around (that's what "Back to Lobby",
+  // triggered by the controller, is for). ----
+  socket.on('host:create-new-room', () => {
+    const oldCode = socket.data.roomCode;
+    const room = rooms.get(oldCode);
+    if (!room || room.phase !== 'game-over') return;
+    if (socket.id !== room.hostSocketId) return;
+
+    rooms.delete(oldCode);
+    const newCode = makeRoomCode();
+    rooms.set(newCode, {
+      hostSocketId: socket.id,
+      hostDisconnectTimer: null,
+      controllerSocketId: null,
+      phase: 'lobby',
+      prompt: null,
+      promptIndex: null,
+      players: new Map(),
+      gameStarted: false,
+      selectedTotalRounds: 5,
+      currentRoundNumber: 0,
+      totalRounds: 0,
+      reveal: null
+    });
+
+    socket.leave(oldCode);
+    socket.join(newCode);
+    socket.data.roomCode = newCode;
+    socket.emit('room:host-created-new-room', { code: newCode, joinBaseUrl: getJoinBaseUrl(socket) });
   });
 
   // ---- Controller restarts with fresh scores after game-over ----

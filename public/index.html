@@ -43,6 +43,7 @@
   #yt-search-submit-btn { background: var(--accent); color: #201827; }
   .secondary.confirm-armed { background: #ff8a3d; color: #201827; }
   .error { color: #ff8a9c; font-size: 0.85rem; margin-top: 6px; min-height: 1.2em; }
+  .error.connecting { color: var(--muted); }
 
   .round-header { font-family: 'Fredoka', sans-serif; font-size: 1rem; font-weight: 600; color: var(--muted); text-align: center; margin-top: 4px; }
   .judge-banner {
@@ -463,19 +464,36 @@
 
   let currentSession = null;
 
-  function attemptJoin(name, code, silent) {
+  function attemptJoin(name, code, silent, retriesLeft) {
+    if (retriesLeft === undefined) retriesLeft = 3;
     if (silent) {
       joinView.classList.add('hidden');
       lobbyWaitView.classList.remove('hidden');
       lobbyWaitText.textContent = 'Reconnecting…';
+    } else {
+      joinBtn.disabled = true;
+      joinError.classList.add('connecting');
+      joinError.textContent = 'Connecting to room…';
     }
     socket.emit('player:join', { name, code }, (res) => {
       if (!res.ok) {
+        // "This game already started" during a reconnect attempt is often just a timing race
+        // against the server marking the old connection as disconnected, not a genuine
+        // permanent failure — retry a couple of times before showing a real error, since it
+        // usually resolves itself within a second and showing this specific message right
+        // away tends to read as "you can't rejoin at all," which isn't accurate.
+        const isAlreadyStartedError = res.error && res.error.toLowerCase().includes('already started');
+        if (isAlreadyStartedError && retriesLeft > 0) {
+          setTimeout(() => attemptJoin(name, code, silent, retriesLeft - 1), 800);
+          return;
+        }
         joinView.classList.remove('hidden');
         lobbyWaitView.classList.add('hidden');
         nameInput.value = name;
         codeInput.value = code;
+        joinError.classList.remove('connecting');
         joinError.textContent = res.error;
+        joinBtn.disabled = false;
         return;
       }
       currentSession = { name, code };
@@ -488,6 +506,8 @@
         ? "Welcome back! Reconnecting you to the game…"
         : "You're in! Waiting for the game to start…";
       updateControllerLobbyUI();
+      joinError.classList.remove('connecting');
+      joinBtn.disabled = false;
     });
   }
 
@@ -495,6 +515,7 @@
     const name = nameInput.value.trim();
     const code = codeInput.value.trim().toUpperCase();
     if (!name || !code) {
+      joinError.classList.remove('connecting');
       joinError.textContent = 'Enter your name and the room code.';
       return;
     }

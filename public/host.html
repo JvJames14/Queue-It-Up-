@@ -55,6 +55,14 @@
     font-family: 'Fredoka', sans-serif;
   }
   #end-game-btn.confirm-armed { background: #ff8a3d; color: #201827; }
+  #new-room-btn {
+    position: fixed; bottom: 2cqh; right: 2cqw; z-index: 500;
+    background: var(--accent); color: #201827; border: none; border-radius: 999px;
+    padding: 1.8cqh 3.3cqw; font-size: 1.95cqmin; font-weight: 700; cursor: pointer;
+    font-family: 'Fredoka', sans-serif; display: none;
+  }
+  #new-room-btn.confirm-armed { background: #ff8a3d; color: #201827; }
+  .tv-frame:has(#gameover-view:not(.hidden)) #new-room-btn { display: block; }
   #reconnect-btn {
     position: fixed; bottom: 2cqh; left: 2cqw; z-index: 500;
     background: #302b4a; color: var(--text); border: none; border-radius: 999px;
@@ -284,6 +292,7 @@
   </div>
 </div>
 <button id="end-game-btn">End Game</button>
+<button id="new-room-btn">Create New Room</button>
 <button id="reconnect-btn" title="If the screen seems stuck or out of sync, tap this to refresh the connection">↻ Refresh Connection</button>
 <div class="wrap">
   <div id="lobby-view">
@@ -726,6 +735,41 @@
     endGameBtn.textContent = 'End Game';
     endGameBtn.classList.remove('confirm-armed');
   }
+
+  // Same two-tap confirm pattern — this is destructive (leaves any still-connected players
+  // behind in a room that's about to be deleted), so it shouldn't fire on a single accidental tap.
+  let newRoomArmed = false;
+  let newRoomResetTimer = null;
+  const newRoomBtn = document.getElementById('new-room-btn');
+  newRoomBtn.addEventListener('click', () => {
+    if (!newRoomArmed) {
+      newRoomArmed = true;
+      newRoomBtn.textContent = 'Tap again to confirm';
+      newRoomBtn.classList.add('confirm-armed');
+      clearTimeout(newRoomResetTimer);
+      newRoomResetTimer = setTimeout(resetNewRoomBtn, 3000);
+      return;
+    }
+    resetNewRoomBtn();
+    socket.emit('host:create-new-room');
+  });
+  function resetNewRoomBtn() {
+    newRoomArmed = false;
+    clearTimeout(newRoomResetTimer);
+    newRoomBtn.textContent = 'Create New Room';
+    newRoomBtn.classList.remove('confirm-armed');
+  }
+
+  socket.on('room:host-created-new-room', ({ code, joinBaseUrl }) => {
+    gameStarted = false;
+    startBgMusic();
+    gameView.classList.add('hidden');
+    gameoverView.classList.add('hidden');
+    lobbyView.classList.remove('hidden');
+    saveHostRoomCode(code);
+    applyRoomCodeAndQr({ code, joinBaseUrl });
+    renderPlayerChips(lobbyPlayersListEl, [], false, true);
+  });
 
   // Start/Play Again/Back to Lobby are all controller-driven now (from a player's phone) —
   // this screen just reacts to whatever the controller does, same as everything else.
