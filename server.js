@@ -728,20 +728,23 @@ io.on('connection', (socket) => {
     if (!room || room.phase !== 'game-over') return;
     if (socket.id !== room.hostSocketId) return;
 
+    const newCode = makeRoomCode();
+
     // This is specifically the "start over with a clean slate" action — force every
     // previously-connected player back to their join screen entirely, rather than leaving
     // them dangling in a room that's about to cease to exist. (Contrast with "Back to Lobby",
     // which is controller-driven and deliberately brings existing players along instead.)
+    // Still send the new code along so their own screen can pre-fill it — "clean slate" means
+    // a genuinely fresh room and role assignment, not that they have to go find the code again.
     for (const playerId of room.players.keys()) {
       const playerSocket = io.sockets.sockets.get(playerId);
       if (playerSocket) {
         playerSocket.leave(oldCode);
-        playerSocket.emit('room:kicked-to-join');
+        playerSocket.emit('room:kicked-to-join', { newCode });
       }
     }
 
     rooms.delete(oldCode);
-    const newCode = makeRoomCode();
     rooms.set(newCode, {
       hostSocketId: socket.id,
       hostDisconnectTimer: null,
@@ -1087,14 +1090,15 @@ io.on('connection', (socket) => {
 
     const player = room.players.get(socket.id);
 
-    if (room.gameStarted && player) {
+    // Unified with the mid-game behavior: a dropped connection just gets flagged, not
+    // removed — the lobby used to delete these entries outright (and immediately hand off
+    // control if it was the controller who dropped), which meant a brief Wi-Fi hiccup while
+    // still setting up could silently boot someone or reassign control out from under them.
+    // Now they stay in the list showing "(reconnecting…)" exactly like mid-game, and the
+    // host/controller can still manually remove them via "Manage players" if they never
+    // come back.
+    if (player) {
       player.connected = false;
-    } else {
-      room.players.delete(socket.id);
-      if (room.controllerSocketId === socket.id) {
-        // Hand off to whoever's left, if anyone, so the room isn't left without a controller
-        room.controllerSocketId = room.players.keys().next().value || null;
-      }
     }
 
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));

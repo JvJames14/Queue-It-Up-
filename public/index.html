@@ -1245,7 +1245,8 @@
   // The host started an entirely fresh room from final scores — this is the "clean slate"
   // action specifically, so every previous player gets sent all the way back to the join
   // screen rather than being left dangling in a room that no longer exists.
-  socket.on('room:kicked-to-join', () => {
+  socket.on('room:kicked-to-join', ({ newCode } = {}) => {
+    const myName = currentSession && currentSession.name;
     currentSession = null;
     isController = false;
     try { localStorage.removeItem(SAVED_JOIN_KEY); } catch (e) {}
@@ -1253,9 +1254,10 @@
     gameoverView.classList.add('hidden');
     lobbyWaitView.classList.add('hidden');
     joinView.classList.remove('hidden');
-    codeInput.value = '';
+    if (myName) nameInput.value = myName;
+    codeInput.value = newCode || '';
     joinError.classList.remove('connecting');
-    joinError.textContent = 'The host started a new room — enter the new code to rejoin.';
+    joinError.textContent = "The host started a new room — tap Join room to rejoin.";
   });
 
   function escapeHtml(str) {
