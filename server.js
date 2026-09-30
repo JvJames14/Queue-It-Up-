@@ -324,12 +324,20 @@ function allActivePicked(room) {
 // Everyone currently connected (active + audience) is expected to cast one vote per round.
 function allVoted(room) {
   if (!room.reveal) return false;
-  const everyone = Array.from(room.players.entries()).filter(([, p]) => p.connected !== false);
-  return everyone.length > 0 && everyone.every(([id]) => room.reveal.votes.has(id));
+  // Only active players' votes are required to enable reveal — audience votes are welcome if
+  // they come in before that point (they still count toward the tally either way), but
+  // shouldn't hold up the controller waiting on people who were never going to submit a song.
+  const requiredVoters = Array.from(room.players.entries())
+    .filter(([, p]) => p.connected !== false && p.role === 'active');
+  return requiredVoters.length > 0 && requiredVoters.every(([id]) => room.reveal.votes.has(id));
 }
 
 function buildScoreboard(room) {
+  // Audience members never submit a song, so they can never actually earn points — showing
+  // them at 0 on the final scoreboard just clutters a leaderboard that was never meaningful
+  // for them in the first place.
   return Array.from(room.players.values())
+    .filter(p => p.role === 'active')
     .map(p => ({ name: p.name, score: p.score }))
     .sort((a, b) => b.score - a.score);
 }
@@ -695,6 +703,17 @@ io.on('connection', (socket) => {
           if (room.reveal.votes.has(id)) {
             targetSocket.emit('room:vote-recorded', { index: room.reveal.votes.get(id) });
           }
+          // If results were already revealed before this handoff, the resync above only
+          // rebuilds the plain pre-results vote list — without this, the new controller's
+          // screen would show the "Reveal results" button instead of "Next round," with no
+          // way to actually progress since the results truly have already been tallied.
+          if (room.reveal.resultsRevealed) {
+            const voteCounts = new Array(room.reveal.picks.length).fill(0);
+            for (const votedIndex of room.reveal.votes.values()) {
+              if (voteCounts[votedIndex] !== undefined) voteCounts[votedIndex] += 1;
+            }
+            targetSocket.emit('room:results-revealed', { voteCounts, scoreboard: buildScoreboard(room) });
+          }
         } else if (room.reveal.canAdvance) {
           // 'room:reveal' resets the client's "can advance" state to false unconditionally
           // (it doesn't know any better) — if the song had already finished playing (or its
@@ -704,7 +723,10 @@ io.on('connection', (socket) => {
           targetSocket.emit('room:can-advance');
         }
       });
-      if (room.reveal.subPhase === 'choosing' && allVoted(room)) {
+      // Only relevant if results haven't been revealed yet — once they have, that button is
+      // long gone in favor of "Next round," and re-sending this would incorrectly bring it
+      // back after the fix above just correctly hid it.
+      if (room.reveal.subPhase === 'choosing' && !room.reveal.resultsRevealed && allVoted(room)) {
         io.to(playerId).emit('room:all-voted');
       }
     }
@@ -903,6 +925,30 @@ io.on('connection', (socket) => {
     if (playerSocket) {
       playerSocket.emit('room:removed-by-host');
       playerSocket.disconnect(true);
+    }
+    io.to(roomCode).emit('room:players-updated', playerListPayload(room));
+  });
+
+  // ---- Remove every audience member at once — the host lobby screen's audience counter
+  // chip has no way to target one specific person individually, so its own X removes them
+  // all in one action. ----
+  socket.on('controller:remove-all-audience', () => {
+    const roomCode = socket.data.roomCode;
+    const room = rooms.get(roomCode);
+    if (!room || (room.phase !== 'lobby' && room.phase !== 'game-over')) return;
+    if (socket.id !== room.controllerSocketId && socket.id !== room.hostSocketId) return;
+
+    const audienceIds = Array.from(room.players.entries())
+      .filter(([, p]) => p.role === 'audience')
+      .map(([id]) => id);
+
+    for (const playerId of audienceIds) {
+      room.players.delete(playerId);
+      const playerSocket = io.sockets.sockets.get(playerId);
+      if (playerSocket) {
+        playerSocket.emit('room:removed-by-host');
+        playerSocket.disconnect(true);
+      }
     }
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
   });

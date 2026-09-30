@@ -174,6 +174,10 @@
 <div class="wrap">
   <h1>🎧 Queue It Up!</h1>
 
+  <!-- Audience-only, persistent across every screen — always visible for as long as they're
+       in the audience, not just during picking/reveal. -->
+  <div class="audience-banner hidden" id="audience-banner">You're in the audience — you'll vote after everyone submits</div>
+
   <!-- Controller-only, persistent across every screen (except the join form) — repositioned
        dynamically depending on which screen is showing (see positionManagePanel below). -->
   <div id="controller-manage-panel" class="hidden" style="margin-top:10px; margin-bottom:10px;">
@@ -207,7 +211,6 @@
   <div id="game-view" class="hidden">
     <div class="round-header" id="round-label"></div>
     <div class="judge-banner hidden" id="judge-banner"></div>
-    <div class="audience-banner hidden" id="audience-banner">You're in the audience — you'll vote after everyone submits</div>
     <div class="prompt-box">
       <span class="prompt-label">Prompt</span>
       <span id="prompt-text"></span>
@@ -294,7 +297,7 @@
         </div>
 
         <div id="judge-choosing-view" class="hidden">
-          <p style="color:var(--muted); font-size:0.85rem;">Cast your own vote below, then reveal results once everyone's voted in.</p>
+          <p style="color:var(--muted); font-size:0.85rem;" id="judge-choosing-hint">Cast your vote below, then reveal results once everyone's voted in.</p>
           <div class="reveal-list" id="judge-reveal-list"></div>
           <button class="primary hidden" id="reveal-results-btn" style="margin-top:14px;" disabled>Reveal results</button>
         </div>
@@ -404,6 +407,7 @@
   const judgeSeqPlayBtn = document.getElementById('judge-seq-play-btn');
   const judgeSeqNextBtn = document.getElementById('judge-seq-next-btn');
   const judgeChoosingView = document.getElementById('judge-choosing-view');
+  const judgeChoosingHint = document.getElementById('judge-choosing-hint');
   const judgeRevealList = document.getElementById('judge-reveal-list');
   const judgeNextBtn = document.getElementById('judge-next-btn');
   const revealResultsBtn = document.getElementById('reveal-results-btn');
@@ -561,6 +565,7 @@
     controllerStartControls.classList.toggle('hidden', !isController || currentPhase !== 'lobby');
     lobbyWaitText.classList.toggle('hidden', isController && currentPhase === 'lobby');
     updateManagePanelVisibility();
+    updateAudienceBannerVisibility();
   }
 
   // "Manage players" and its list are controller-only, but persist across every screen
@@ -568,6 +573,13 @@
   function updateManagePanelVisibility() {
     controllerManagePanel.classList.toggle('hidden', !isController);
     positionManagePanel();
+  }
+
+  // Same idea for the audience banner — persistent across every screen for as long as
+  // someone's in the audience, not just shown/hidden as a side effect of game-view
+  // transitions (picking, reveal, etc.).
+  function updateAudienceBannerVisibility() {
+    audienceBannerEl.classList.toggle('hidden', myRole !== 'audience');
   }
 
   // Same panel, repositioned to wherever makes sense on the currently-visible screen —
@@ -796,7 +808,6 @@
 
     judgeBannerEl.classList.toggle('hidden', !isController);
     if (isController) judgeBannerEl.textContent = "Host";
-    audienceBannerEl.classList.toggle('hidden', myRole !== 'audience');
 
     const showPickingUI = myRole === 'active' && currentPhase === 'picking' && !hasSubmittedThisRound;
     if (showPickingUI) {
@@ -1037,11 +1048,16 @@
     if (isController) {
       judgeSequentialView.classList.add('hidden');
       judgeChoosingView.classList.remove('hidden');
+      judgeChoosingHint.classList.remove('hidden');
       renderChoosingList(judgeRevealList, true);
     } else {
       viewerSequentialView.classList.add('hidden');
       viewerRevealList.classList.remove('hidden');
       viewerVoteStatus.classList.remove('hidden');
+      // Without this, a player who saw "Waiting on host…" after the previous round's results
+      // would still see that same stale text at the start of this round's voting, right up
+      // until they voted again — nothing was resetting it back to the actual default.
+      viewerVoteStatus.textContent = 'Vote for your favorite — tap a song below.';
       renderChoosingList(viewerRevealList, false);
     }
   });
@@ -1151,8 +1167,9 @@
     judgeRevealList.querySelectorAll('.by').forEach(el => el.classList.remove('hidden'));
     viewerRevealList.querySelectorAll('.by').forEach(el => el.classList.remove('hidden'));
     revealResultsBtn.classList.add('hidden');
+    judgeChoosingHint.classList.add('hidden');
     if (viewerVoteStatus && !viewerVoteStatus.classList.contains('hidden')) {
-      viewerVoteStatus.textContent = 'Waiting on host to start…';
+      viewerVoteStatus.textContent = 'Waiting on host…';
     }
 
     if (isController) {

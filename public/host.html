@@ -183,7 +183,7 @@
   .error-text { color: #ff8a9c; font-size: 1.75cqmin; min-height: 1.2em; }
 
   .yt-video-wrap {
-    position: relative; width: 75cqw; aspect-ratio: 16 / 9; margin: 1.5cqh auto;
+    position: relative; width: 68cqw; aspect-ratio: 16 / 9; margin: 1.5cqh auto;
     border-radius: 2cqmin; overflow: hidden; background: #000;
     box-shadow: 0 0 4.5cqmin rgba(0,0,0,0.5);
   }
@@ -197,8 +197,8 @@
   .seq-card .title { font-size: 2.5cqmin; font-weight: 700; margin-top: 1.5cqh; }
   .seq-card .artist { color: var(--muted); font-size: 1.9cqmin; margin-top: 0.4cqh; }
 
-  #game-view.focus-mode .seq-card img { width: 51cqmin; height: 51cqmin; }
-  #game-view.focus-mode .seq-card img.cover-wide { width: 60cqmin; height: 34cqmin; }
+  #game-view.focus-mode .seq-card img { width: 45cqmin; height: 45cqmin; }
+  #game-view.focus-mode .seq-card img.cover-wide { width: 53cqmin; height: 30cqmin; }
   #game-view.focus-mode .seq-card .title { font-size: 3.4cqmin; }
   #game-view.focus-mode .seq-card .artist { font-size: 2.5cqmin; }
   #game-view.focus-mode .seq-progress { font-size: 2.4cqmin; }
@@ -249,8 +249,14 @@
   .reveal-card img { width: 7cqmin; height: 7cqmin; border-radius: 1.2cqmin; }
   .reveal-card img.cover-wide { width: 12.4cqmin; height: 7cqmin; object-fit: cover; }
   .reveal-card .meta { flex: 1; }
-  .reveal-card .meta .title { font-weight: 700; font-size: 2cqmin; }
-  .reveal-card .meta .artist { color: var(--muted); font-size: 1.75cqmin; }
+  .reveal-card .meta .title {
+    font-weight: 700; font-size: 2cqmin;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  }
+  .reveal-card .meta .artist {
+    color: var(--muted); font-size: 1.75cqmin;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  }
   .reveal-card .meta .by { font-size: 1.55cqmin; color: var(--accent); margin-top: 0.4cqh; font-weight: 600; }
   .winner-badge {
     background: var(--gold); color: #201827; font-weight: 800; font-size: 3.4cqmin;
@@ -843,19 +849,30 @@
       container.appendChild(chip);
     });
 
-    if (audienceCount > 0) {
+    if (audienceCount > 0 && !(container === arenaPlayersListEl && currentPhase === 'picking')) {
+      // No green/gray progress indicator at all for the audience chip anymore — it's purely
+      // a headcount, not a status. And during picking specifically it's hidden entirely on
+      // the arena screen, since the audience has nothing to do at that point and the chip
+      // added nothing but clutter there.
       const audienceChip = document.createElement('div');
       audienceChip.className = 'player-chip audience';
-      audienceChip.innerHTML = `<span class="dot"></span> Audience Members: ${audienceCount}`;
+      const removeBtn = showRemoveBtn ? `<button class="remove-player-btn" data-remove-all-audience="true" title="Remove all audience members">✕</button>` : '';
+      audienceChip.innerHTML = `<span class="dot"></span> Audience Members: ${audienceCount}${removeBtn}`;
       container.appendChild(audienceChip);
     }
 
     if (showRemoveBtn) {
-      container.querySelectorAll('.remove-player-btn').forEach(btn => {
+      container.querySelectorAll('.remove-player-btn[data-player-id]').forEach(btn => {
         btn.addEventListener('click', () => {
           socket.emit('controller:remove-player', { playerId: btn.dataset.playerId });
         });
       });
+      const removeAllAudienceBtn = container.querySelector('.remove-player-btn[data-remove-all-audience]');
+      if (removeAllAudienceBtn) {
+        removeAllAudienceBtn.addEventListener('click', () => {
+          socket.emit('controller:remove-all-audience');
+        });
+      }
     }
   }
 
@@ -878,6 +895,16 @@
         : pickedCount === active.length
           ? 'All players in'
           : `${pickedCount}/${active.length} players have picked…`;
+    }
+
+    if (currentPhase === 'reveal' && revealSubPhase === 'choosing') {
+      const activePlayers = players.filter(p => p.connected !== false && p.role === 'active');
+      const votedCount = activePlayers.filter(p => p.hasVoted).length;
+      pickingStatusEl.textContent = !activePlayers.length
+        ? ''
+        : votedCount === activePlayers.length
+          ? 'All players in'
+          : `${votedCount}/${activePlayers.length} have voted…`;
     }
   });
 
@@ -904,6 +931,9 @@
     gameoverView.classList.add('hidden');
     gameView.classList.remove('hidden');
     exitSequentialFocus();
+    // Move the status text back to its original spot (right after the player chips) — during
+    // voting it gets relocated to sit under the song cards instead.
+    arenaPlayersListEl.insertAdjacentElement('afterend', pickingStatusEl);
     roundLabelEl.textContent = `Round ${roundNumber} of ${totalRounds}`;
     judgeBannerEl.textContent = `${controllerName} is host`;
     promptTextEl.textContent = prompt;
@@ -991,8 +1021,13 @@
     roundLabelEl.classList.remove('hidden');
     judgeBannerEl.classList.remove('hidden');
     promptBoxEl.classList.remove('hidden');
+    // Keeping the vote counter text visible, but not the full chip row — too cluttered
+    // alongside the song cards. Move it to sit under those cards instead of its picking-phase
+    // spot right after the player chips, matching where it visually belongs during voting.
+    pickingStatusEl.classList.remove('hidden');
     gameView.classList.add('choosing-chrome');
     renderFullRevealList();
+    revealListEl.insertAdjacentElement('afterend', pickingStatusEl);
   });
 
   function renderFullRevealList() {
