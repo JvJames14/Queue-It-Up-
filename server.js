@@ -264,7 +264,7 @@ const MAX_ACTIVE_PLAYERS = 8;
 const ROUND_OPTIONS = [5, 10, 15];
 
 /** rooms: Map<code, {
- *   hostSocketId, hostDisconnectTimer,        // the TV device — pure display, no game controls of its own
+ *   hostSocketId,        // the TV device — pure display, no game controls of its own
  *   controllerSocketId,                       // a player — drives the whole game (was called "judge"/"leader" before)
  *   phase: 'lobby'|'picking'|'reveal'|'game-over',
  *   prompt, promptIndex, seenPromptIndexes,
@@ -504,7 +504,6 @@ io.on('connection', (socket) => {
     const code = makeRoomCode();
     rooms.set(code, {
       hostSocketId: socket.id,
-      hostDisconnectTimer: null,
       controllerSocketId: null,
       phase: 'lobby',
       prompt: null,
@@ -528,10 +527,6 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     if (!room) return ack?.({ ok: false });
 
-    if (room.hostDisconnectTimer) {
-      clearTimeout(room.hostDisconnectTimer);
-      room.hostDisconnectTimer = null;
-    }
     room.hostSocketId = socket.id;
     socket.join(roomCode);
     socket.data.roomCode = roomCode;
@@ -818,7 +813,6 @@ io.on('connection', (socket) => {
     rooms.delete(oldCode);
     rooms.set(newCode, {
       hostSocketId: socket.id,
-      hostDisconnectTimer: null,
       controllerSocketId: null,
       pendingControllerName,
       phase: 'lobby',
@@ -882,7 +876,6 @@ io.on('connection', (socket) => {
     rooms.delete(oldCode);
     rooms.set(newCode, {
       hostSocketId: null,
-      hostDisconnectTimer: null,
       controllerSocketId: null,
       phase: 'lobby',
       prompt: null,
@@ -1197,11 +1190,10 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     if (socket.data.role === 'host') {
+      // No automatic expiry here anymore — a game only ever ends from an explicit End Game
+      // action. The host's own reconnect logic (host:resume-room) handles it coming back
+      // whenever that happens, however long it takes.
       room.hostSocketId = null;
-      room.hostDisconnectTimer = setTimeout(() => {
-        io.to(roomCode).emit('room:host-left');
-        rooms.delete(roomCode);
-      }, 10 * 60 * 1000);
       return;
     }
 

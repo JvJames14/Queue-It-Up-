@@ -1279,10 +1279,6 @@
     }
   });
 
-  socket.on('room:host-left', () => {
-    alert('The host ended the game.');
-  });
-
   socket.on('room:removed-by-host', () => {
     currentSession = null;
     try { localStorage.removeItem(SAVED_JOIN_KEY); } catch (e) {}

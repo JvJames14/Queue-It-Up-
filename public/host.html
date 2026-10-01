@@ -160,7 +160,7 @@
     padding: 0.6cqh 200px; margin: 20px auto 2cqh;
     font-size: 4cqmin; font-weight: 700; max-width: 92cqw;
   }
-  .prompt-box .prompt-label { display: block; font-size: 1.5cqmin; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.9cqh; }
+  .prompt-box .prompt-label { display: block; font-size: 3cqmin; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.9cqh; }
   .players { display: flex; flex-wrap: wrap; gap: 1.4cqmin; justify-content: center; margin: 2cqh 0; max-height: 20cqh; overflow-y: auto; }
   .player-chip {
     background: var(--panel); border: 2px solid #3c3560; border-radius: 999px;
@@ -189,7 +189,7 @@
 
   .yt-video-wrap {
     position: relative; width: 68cqw; aspect-ratio: 16 / 9; margin: 1.5cqh auto;
-    border-radius: 2cqmin; overflow: hidden; background: #000;
+    border-radius: 2cqmin; background: #000;
     box-shadow: 0 0 4.5cqmin rgba(0,0,0,0.5);
   }
   .yt-video-wrap.hidden { display: none; }
@@ -214,7 +214,7 @@
      clipped the top of the prompt behind it. Reclaiming that space properly by shrinking the
      header row itself instead (same reduction already used for video-focus mode). */
   .tv-frame:has(#game-view.choosing-chrome) .header-row { margin-top: 0.4cqh; }
-  #game-view.choosing-chrome .prompt-box .prompt-label { font-size: 1.1cqmin; margin-bottom: 0.5cqh; }
+  #game-view.choosing-chrome .prompt-box .prompt-label { font-size: 2.2cqmin; margin-bottom: 0.5cqh; }
 
   .reveal-list { display: flex; flex-direction: column; gap: 1.2cqh; text-align: left; margin-top: 2cqh; max-width: 72cqw; margin-left: auto; margin-right: auto; max-height: 55cqh; overflow-y: auto; }
 
@@ -349,6 +349,7 @@
 
   <div id="game-view" class="hidden">
     <div class="prompt-box" id="prompt-box">
+      <span class="prompt-label">Prompt</span>
       <span id="prompt-text"></span>
     </div>
     <div class="round-header" id="round-label"></div>
@@ -744,7 +745,7 @@
             roundLabelEl.classList.remove('hidden');
             judgeBannerEl.classList.remove('hidden');
             promptBoxEl.classList.remove('hidden');
-            gameView.classList.add('choosing-chrome');
+            enterChoosingChrome();
             renderFullRevealList();
           }
         } else if (revealSubPhase === 'sequential' && res.reveal.subPhase === 'sequential' && res.reveal.revealIndex !== currentRevealIndex) {
@@ -757,7 +758,7 @@
           roundLabelEl.classList.remove('hidden');
           judgeBannerEl.classList.remove('hidden');
           promptBoxEl.classList.remove('hidden');
-          gameView.classList.add('choosing-chrome');
+          enterChoosingChrome();
           renderFullRevealList();
         }
       }
@@ -1033,6 +1034,20 @@
   });
 
   const tvFrameEl = document.querySelector('.tv-frame');
+  const wrapEl = document.querySelector('.wrap');
+  // Applied directly here rather than relying solely on the CSS :has() selector for this —
+  // that selector's re-evaluation was inconsistent on some devices, sometimes correctly
+  // top-aligning this content and sometimes falling back to the default centered layout.
+  function enterChoosingChrome() {
+    gameView.classList.add('choosing-chrome');
+    wrapEl.style.justifyContent = 'flex-start';
+    wrapEl.style.paddingTop = '0';
+  }
+  function exitChoosingChrome() {
+    gameView.classList.remove('choosing-chrome');
+    wrapEl.style.justifyContent = '';
+    wrapEl.style.paddingTop = '';
+  }
   function enterSequentialFocus() {
     roundLabelEl.classList.add('hidden');
     judgeBannerEl.classList.add('hidden');
@@ -1040,7 +1055,7 @@
     arenaPlayersListEl.classList.add('hidden');
     pickingStatusEl.classList.add('hidden');
     gameView.classList.add('focus-mode');
-    gameView.classList.remove('choosing-chrome');
+    exitChoosingChrome();
     tvFrameEl.classList.add('video-focus');
   }
   function exitSequentialFocus() {
@@ -1050,7 +1065,7 @@
     arenaPlayersListEl.classList.remove('hidden');
     pickingStatusEl.classList.remove('hidden');
     gameView.classList.remove('focus-mode');
-    gameView.classList.remove('choosing-chrome');
+    exitChoosingChrome();
     tvFrameEl.classList.remove('video-focus');
     tvFrameEl.classList.remove('cover-showing');
   }
@@ -1083,7 +1098,7 @@
     // alongside the song cards. Move it to sit under those cards instead of its picking-phase
     // spot right after the player chips, matching where it visually belongs during voting.
     pickingStatusEl.classList.remove('hidden');
-    gameView.classList.add('choosing-chrome');
+    enterChoosingChrome();
     renderFullRevealList();
     revealListEl.insertAdjacentElement('afterend', pickingStatusEl);
   });
