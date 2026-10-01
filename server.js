@@ -36,6 +36,13 @@ function getJoinBaseUrl(socket) {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Lightweight keep-alive endpoint — the host screen pings this periodically during an active
+// game. Render's free tier spins the whole process down after a period without new HTTP
+// activity, which silently wipes every in-memory room even while a game is still being
+// actively played over an already-open WebSocket connection. This gives the host something
+// to periodically hit so the service is less likely to spin down mid-session.
+app.get('/api/keepalive', (req, res) => res.sendStatus(200));
+
 // ---------- iTunes Search API proxy (default search + 30s preview clip) ----------
 app.get('/api/search', async (req, res) => {
   const q = req.query.q;

@@ -67,7 +67,7 @@
     position: fixed; bottom: 2cqh; left: 2cqw; z-index: 500;
     background: #302b4a; color: var(--text); border: none; border-radius: 999px;
     padding: 1.8cqh 3.3cqw; font-size: 1.95cqmin; font-weight: 700; cursor: pointer;
-    font-family: 'Fredoka', sans-serif; opacity: 0.55;
+    font-family: 'Fredoka', sans-serif;
   }
   #reconnect-btn.reconnecting { background: var(--accent-2); color: #fff; opacity: 1; cursor: default; }
   .tv-frame:has(#start-view:not(.hidden)) #reconnect-btn { display: none; }
@@ -108,6 +108,12 @@
   .wrap:has(#game-view.choosing-chrome) { justify-content: flex-start; padding-top: 0; }
 
   .logo-mark { font-size: 18cqmin; line-height: 1; margin-bottom: 0.8cqh; filter: drop-shadow(0 0 2.2cqmin rgba(255,61,154,0.4)); }
+  /* Shrunk rather than removed entirely while the song cards are on screen (voting) — the
+     full-size version was growing tall enough to visually collide with the fixed Refresh
+     Connection/End Game buttons in the bottom corners, but a small header still fits.
+     Reusing the same compact size already established for video-focus mode. */
+  .tv-frame:has(#game-view.choosing-chrome) .logo-mark { font-size: 6cqmin; margin-bottom: 0.2cqh; }
+  .tv-frame:has(#game-view.choosing-chrome) h1 { font-size: 2.6cqmin; margin: 0 0 0.4cqh; }
   h1 {
     font-family: 'Fredoka', -apple-system, sans-serif;
     font-weight: 700;
@@ -208,6 +214,10 @@
 
   .reveal-list { display: flex; flex-direction: column; gap: 1.2cqh; text-align: left; margin-top: 2cqh; max-width: 72cqw; margin-left: auto; margin-right: auto; max-height: 55cqh; overflow-y: auto; }
 
+  /* .reveal-list.two-col and .reveal-list.four-col below both have higher specificity (two
+     classes) than .hidden (one class) — without this, a card list with 3+ submissions keeps
+     displaying as a grid even with .hidden applied, regardless of declaration order. */
+  .reveal-list.two-col.hidden, .reveal-list.four-col.hidden { display: none; }
   .reveal-list.two-col {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -262,16 +272,25 @@
     background: var(--gold); color: #201827; font-weight: 800; font-size: 3.4cqmin;
     padding: 0.9cqh 1.8cqw; border-radius: 999px; white-space: nowrap;
   }
+  /* .wrap uses align-items: center, which shrink-wraps every child to its own content's
+     natural width by default — without explicit width here, #gameover-view and
+     #final-scoreboard never actually grow wide enough to give .score-row's max-width
+     anywhere to expand into, no matter how large that max-width is set. */
+  #gameover-view, #final-scoreboard { width: 100%; }
   .score-row {
     display: flex; justify-content: space-between; background: var(--panel);
     border-radius: 1.8cqmin; padding: 1.7cqh 2.7cqw; margin-bottom: 1.2cqh; font-weight: 600; font-size: 2.3cqmin;
-    max-width: 52cqw; margin-left: auto; margin-right: auto; border: 2px solid transparent;
+    width: 100%; max-width: 85cqw; margin-left: auto; margin-right: auto; border: 2px solid transparent;
   }
   .score-row.winner { background: rgba(255, 217, 74, 0.18); border-color: var(--gold); box-shadow: 0 0 2.2cqmin rgba(255,217,74,0.35); }
   #final-scoreboard.two-col {
     display: grid; grid-template-columns: repeat(2, 1fr); grid-auto-flow: row;
-    gap: 0.8cqh 2cqw; max-width: 88cqw; margin: 0 auto;
+    gap: 0.8cqh 2cqw; max-width: 97cqw; margin: 0 auto;
   }
+  /* The two-column layout (6+ players) resets each row's own max-width back to none, since
+     width there is governed by the grid's column tracks instead — so widening .score-row
+     above only affects the single-column case; the container's own max-width just above is
+     what actually controls per-row width here. */
   #final-scoreboard.two-col .score-row { max-width: none; margin: 0; }
   h2 { font-family: 'Fredoka', sans-serif; font-size: 3.6cqmin; margin: 0.8cqh 0; }
   .hidden { display: none; }
@@ -516,6 +535,13 @@
         onReady: () => {
           ytReady = true;
           ytPlayer.setVolume(100);
+          // The 560x315 above is just a required initial value for the constructor — CSS
+          // then force-resizes the actual iframe box to fill .yt-video-wrap responsively.
+          // But YouTube's own player positions its title/settings overlay based on the pixel
+          // size it was told about here, not the CSS-overridden box size, so without this
+          // explicit correction that overlay stays laid out for 560x315 while the visible
+          // player is much larger — cropping or misplacing it relative to what's shown.
+          syncYtPlayerSize();
           console.log('[YouTube] Player ready.');
           if (onReadyCallback) onReadyCallback();
         },
@@ -523,6 +549,14 @@
         onError: (e) => console.error('[YouTube] Player error, code:', e.data)
       }
     });
+  }
+
+  function syncYtPlayerSize() {
+    if (!ytReady || !ytPlayer || typeof ytPlayer.setSize !== 'function') return;
+    const rect = ytVideoWrap.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      ytPlayer.setSize(rect.width, rect.height);
+    }
   }
 
   function onYouTubeIframeAPIReady() {
@@ -723,6 +757,15 @@
     });
   }, 3000);
 
+  // Best-effort keep-alive so a long game session is less likely to hit Render's free-tier
+  // spin-down (which silently wipes the room and, if it happens, means the host screen's
+  // resume attempt will fail and fall back to creating a whole new room mid-game). This
+  // can't guarantee the platform never spins the service down, but it removes the most
+  // likely trigger for it during an otherwise-active session.
+  setInterval(() => {
+    fetch('/api/keepalive').catch(() => {});
+  }, 4 * 60 * 1000);
+
   // Two-tap inline confirmation (no browser popup) for the one control that stays on this screen.
   let endGameArmed = false;
   let endGameResetTimer = null;
@@ -744,23 +787,30 @@
     let confirmed = false;
     socket.emit('host:end-game', {}, (res) => {
       confirmed = true;
+      endGameBtn.textContent = 'End Game';
       // A response of ok:false means the command genuinely reached the server but the game
       // was already over or something else changed — no need to retry, the button just
       // silently does nothing further, matching the original behavior for that case.
     });
     // If the command never even reaches the server (a "zombie" connection — the browser
-    // thinks it's fine but no packets are actually getting through), no ack ever comes back
-    // and the button used to just silently do nothing until the person separately noticed
-    // and hit "Refresh Connection" themselves. This makes that recovery automatic: force a
-    // reconnect and resend the command once the connection is genuinely restored.
+    // thinks it's fine but no packets are actually getting through), no ack ever comes back.
+    // This used to silently do nothing for 3 full seconds before even attempting recovery,
+    // with no visible feedback at all — easy to mistake for the button simply not working,
+    // especially if someone gives up and manually hits "Refresh Connection" before this ever
+    // kicks in. Shortened the wait and the button now visibly shows what's happening instead.
     setTimeout(() => {
       if (confirmed) return;
+      endGameBtn.textContent = 'Reconnecting…';
       socket.disconnect();
       socket.connect();
       socket.once('connect', () => {
-        setTimeout(() => socket.emit('host:end-game'), 500);
+        setTimeout(() => {
+          socket.emit('host:end-game', {}, () => {
+            endGameBtn.textContent = 'End Game';
+          });
+        }, 500);
       });
-    }, 3000);
+    }, 1500);
   }
 
   function resetEndGameBtn() {
@@ -1062,11 +1112,34 @@
       seqCoverCard.classList.add('hidden');
       ytVideoWrap.classList.remove('hidden');
       tvFrameEl.classList.remove('cover-showing');
+      // The prompt box otherwise stays visible during voting (choosing-chrome), leaving too
+      // little vertical space for the video and clipping it at the bottom — hide it whenever
+      // a YouTube video is actually playing, regardless of which phase triggered it.
+      promptBoxEl.classList.add('hidden');
+      // video-focus (which shrinks the header's room code/QR/title) was only ever being
+      // applied during the sequential walkthrough — but a YouTube video can also play during
+      // voting (replaying a song from the vote list), where the header was staying full-size
+      // the whole time and eating into the same space the video needed, cropping it too.
+      tvFrameEl.classList.add('video-focus');
+      // During voting specifically, give it the exact same full-screen presentation as the
+      // sequential walkthrough — also hiding the song cards, round tracker, and host banner.
+      // Not reusing enterSequentialFocus() itself since that also strips the choosing-chrome
+      // class, which would break restoring the voting layout once playback stops.
+      if (gameView.classList.contains('choosing-chrome')) {
+        revealListEl.classList.add('hidden');
+        roundLabelEl.classList.add('hidden');
+        judgeBannerEl.classList.add('hidden');
+        gameView.classList.add('focus-mode');
+      }
       const videoId = track.youtube.videoId;
       const startSeconds = track.youtube.startSeconds || 0;
       createYtPlayer(() => {
         ytPlayer.loadVideoById({ videoId, startSeconds });
         ytPlayer.playVideo();
+        // The container's actual size can differ between plays (e.g. hiding the prompt box
+        // above it changes available space), so re-sync every time rather than relying on
+        // whatever was measured when the player was first created.
+        syncYtPlayerSize();
       });
     } else {
       if (ytReady) ytPlayer.stopVideo();
@@ -1088,6 +1161,18 @@
     ytVideoWrap.classList.add('hidden');
     seqCoverCard.classList.remove('hidden');
     document.querySelectorAll('.reveal-card').forEach(c => c.classList.remove('now-playing'));
+    // Only re-show the prompt (and un-shrink the header) if we're actually in the voting
+    // layout, where both are normally visible/full-size — during the sequential song-by-song
+    // walkthrough they're meant to stay hidden/shrunk regardless (that's managed separately
+    // by enter/exitSequentialFocus, which this shouldn't fight with).
+    if (gameView.classList.contains('choosing-chrome')) {
+      promptBoxEl.classList.remove('hidden');
+      tvFrameEl.classList.remove('video-focus');
+      revealListEl.classList.remove('hidden');
+      roundLabelEl.classList.remove('hidden');
+      judgeBannerEl.classList.remove('hidden');
+      gameView.classList.remove('focus-mode');
+    }
   }
 
   audio.addEventListener('ended', () => {
