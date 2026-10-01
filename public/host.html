@@ -208,7 +208,12 @@
   #game-view.focus-mode .seq-card .artist { font-size: 2.5cqmin; }
   #game-view.focus-mode .seq-progress { font-size: 2.4cqmin; }
 
-  #game-view.choosing-chrome .prompt-box { font-size: 4cqmin; padding: 0.4cqh 200px; margin: -60px auto 1.2cqh; max-width: 88cqw; }
+  #game-view.choosing-chrome .prompt-box { font-size: 4cqmin; padding: 0.4cqh 200px; margin: 20px auto 1.2cqh; max-width: 88cqw; }
+  /* The negative-margin approach tried previously risked overlapping the header row, which
+     still occupies space from the room code/QR elements even with the logo hidden — this
+     clipped the top of the prompt behind it. Reclaiming that space properly by shrinking the
+     header row itself instead (same reduction already used for video-focus mode). */
+  .tv-frame:has(#game-view.choosing-chrome) .header-row { margin-top: 0.4cqh; }
   #game-view.choosing-chrome .prompt-box .prompt-label { font-size: 1.1cqmin; margin-bottom: 0.5cqh; }
 
   .reveal-list { display: flex; flex-direction: column; gap: 1.2cqh; text-align: left; margin-top: 2cqh; max-width: 72cqw; margin-left: auto; margin-right: auto; max-height: 55cqh; overflow-y: auto; }
@@ -528,7 +533,11 @@
     ytPlayer = new YT.Player(freshDiv.id, {
       height: '315',
       width: '560',
-      playerVars: { rel: 0 },
+      // Hiding YouTube's own controls/title overlay entirely rather than continuing to chase
+      // its sizing/positioning — the controller already drives playback through this app, so
+      // that overlay was never actually needed, and removing it sidesteps the cropping issue
+      // outright instead of trying to fix where it's drawn.
+      playerVars: { rel: 0, controls: 0, modestbranding: 1, disablekb: 1, fs: 0, iv_load_policy: 3 },
       events: {
         onReady: () => {
           ytReady = true;
@@ -781,7 +790,8 @@
     sendEndGame();
   });
 
-  function sendEndGame() {
+  function sendEndGame(retriesLeft) {
+    if (retriesLeft === undefined) retriesLeft = 4;
     let confirmed = false;
     socket.emit('host:end-game', {}, (res) => {
       confirmed = true;
@@ -792,21 +802,21 @@
     });
     // If the command never even reaches the server (a "zombie" connection — the browser
     // thinks it's fine but no packets are actually getting through), no ack ever comes back.
-    // This used to silently do nothing for 3 full seconds before even attempting recovery,
-    // with no visible feedback at all — easy to mistake for the button simply not working,
-    // especially if someone gives up and manually hits "Refresh Connection" before this ever
-    // kicks in. Shortened the wait and the button now visibly shows what's happening instead.
+    // A single retry wasn't always enough — if that attempt also lands on a connection that
+    // hasn't actually recovered yet, there was nothing left to fall back on, leaving the
+    // person needing to manually hit "Refresh Connection" themselves. This now keeps retrying
+    // (forcing a fresh reconnect each time) until it succeeds or runs out of attempts.
     setTimeout(() => {
       if (confirmed) return;
+      if (retriesLeft <= 0) {
+        endGameBtn.textContent = 'End Game';
+        return;
+      }
       endGameBtn.textContent = 'Reconnecting…';
       socket.disconnect();
       socket.connect();
       socket.once('connect', () => {
-        setTimeout(() => {
-          socket.emit('host:end-game', {}, () => {
-            endGameBtn.textContent = 'End Game';
-          });
-        }, 500);
+        setTimeout(() => sendEndGame(retriesLeft - 1), 500);
       });
     }, 1500);
   }
