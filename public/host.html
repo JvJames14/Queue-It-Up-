@@ -40,7 +40,7 @@
   }
   .header-side { flex-shrink: 0; width: 15cqw; min-width: 190px; display: flex; flex-direction: column; align-items: center; text-align: center; }
   .header-center { flex: 1; text-align: center; }
-  .mini-code-label { font-size: 0.9cqmin; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 600; }
+  .mini-code-label { font-size: 1.8cqmin; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 600; }
   .mini-code { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 6.5cqmin; letter-spacing: 0.1em; color: var(--gold); }
   .tv-frame.video-focus:not(.cover-showing) .mini-code { font-size: 3.8cqmin; }
   #qrcode { background: #fff; padding: 4px; border-radius: 0.6cqmin; line-height: 0; }
@@ -108,12 +108,11 @@
   .wrap:has(#game-view.choosing-chrome) { justify-content: flex-start; padding-top: 0; }
 
   .logo-mark { font-size: 18cqmin; line-height: 1; margin-bottom: 0.8cqh; filter: drop-shadow(0 0 2.2cqmin rgba(255,61,154,0.4)); }
-  /* Shrunk rather than removed entirely while the song cards are on screen (voting) — the
-     full-size version was growing tall enough to visually collide with the fixed Refresh
-     Connection/End Game buttons in the bottom corners, but a small header still fits.
-     Reusing the same compact size already established for video-focus mode. */
-  .tv-frame:has(#game-view.choosing-chrome) .logo-mark { font-size: 6cqmin; margin-bottom: 0.2cqh; }
-  .tv-frame:has(#game-view.choosing-chrome) h1 { font-size: 2.6cqmin; margin: 0 0 0.4cqh; }
+  /* Removed entirely (not just shrunk) while the song cards are on screen (voting) — freeing
+     up vertical space so the cards don't collide with the fixed Refresh Connection/End Game
+     buttons in the bottom corners. */
+  .tv-frame:has(#game-view.choosing-chrome) .logo-mark,
+  .tv-frame:has(#game-view.choosing-chrome) h1 { display: none; }
   h1 {
     font-family: 'Fredoka', -apple-system, sans-serif;
     font-weight: 700;
@@ -209,7 +208,7 @@
   #game-view.focus-mode .seq-card .artist { font-size: 2.5cqmin; }
   #game-view.focus-mode .seq-progress { font-size: 2.4cqmin; }
 
-  #game-view.choosing-chrome .prompt-box { font-size: 4cqmin; padding: 0.4cqh 200px; margin: 20px auto 1.2cqh; max-width: 88cqw; }
+  #game-view.choosing-chrome .prompt-box { font-size: 4cqmin; padding: 0.4cqh 200px; margin: -60px auto 1.2cqh; max-width: 88cqw; }
   #game-view.choosing-chrome .prompt-box .prompt-label { font-size: 1.1cqmin; margin-bottom: 0.5cqh; }
 
   .reveal-list { display: flex; flex-direction: column; gap: 1.2cqh; text-align: left; margin-top: 2cqh; max-width: 72cqw; margin-left: auto; margin-right: auto; max-height: 55cqh; overflow-y: auto; }
@@ -345,7 +344,6 @@
 
   <div id="game-view" class="hidden">
     <div class="prompt-box" id="prompt-box">
-      <span class="prompt-label">Prompt</span>
       <span id="prompt-text"></span>
     </div>
     <div class="round-header" id="round-label"></div>
@@ -1138,8 +1136,11 @@
         ytPlayer.playVideo();
         // The container's actual size can differ between plays (e.g. hiding the prompt box
         // above it changes available space), so re-sync every time rather than relying on
-        // whatever was measured when the player was first created.
+        // whatever was measured when the player was first created. A second, delayed sync
+        // catches any layout that hadn't fully settled yet at the moment of the first one
+        // (e.g. if hiding/showing other elements around it triggers a reflow slightly later).
         syncYtPlayerSize();
+        setTimeout(syncYtPlayerSize, 300);
       });
     } else {
       if (ytReady) ytPlayer.stopVideo();
