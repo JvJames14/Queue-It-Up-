@@ -48,8 +48,11 @@
   /* The QR code is the tallest thing in the header row, so it's what's actually governing
      the header's height — shrinking it here (without touching the room code text) is a
      direct, reliable way to reduce the header's footprint during voting specifically. */
-  .tv-frame:has(#game-view.choosing-chrome) #qrcode img,
-  .tv-frame:has(#game-view.choosing-chrome) #qrcode canvas { width: 120px !important; height: 120px !important; }
+  /* header-compact is shared by both the picking and voting phases now — same shrunk QR,
+     hidden logo/title, and tightened header row in both, so this no longer needs to be
+     choosing-chrome-specific. */
+  .tv-frame:has(#game-view.header-compact) #qrcode img,
+  .tv-frame:has(#game-view.header-compact) #qrcode canvas { width: 120px !important; height: 120px !important; }
   .tv-frame.video-focus:not(.cover-showing) #qrcode img,
   .tv-frame.video-focus:not(.cover-showing) #qrcode canvas { width: 102px !important; height: 102px !important; }
   .qr-unavailable { font-size: 0.7cqmin; color: var(--muted); }
@@ -120,8 +123,8 @@
      so refreshing mid-game (which can land straight in choosing-chrome via the catch-up
      logic, before the person ever clicks Play) was incorrectly hiding the splash screen's
      own logo and title too, leaving only the Play button visible. */
-  .tv-frame:has(#game-view.choosing-chrome) .header-center .logo-mark,
-  .tv-frame:has(#game-view.choosing-chrome) .header-center h1 { display: none; }
+  .tv-frame:has(#game-view.header-compact) .header-center .logo-mark,
+  .tv-frame:has(#game-view.header-compact) .header-center h1 { display: none; }
   h1 {
     font-family: 'Fredoka', -apple-system, sans-serif;
     font-weight: 700;
@@ -170,7 +173,7 @@
     margin: 2cqh 0 0.8cqh; font-size: 1.9cqmin; font-weight: 700; color: var(--muted);
   }
   .prompt-box {
-    padding: 0.6cqh 200px; margin: 20px auto 2cqh;
+    padding: 0.6cqh 200px; margin: 20px auto calc(2cqh + 60px);
     font-size: 4cqmin; font-weight: 700; max-width: 92cqw;
   }
   .prompt-box .prompt-label { display: block; font-size: 3cqmin; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.9cqh; }
@@ -221,7 +224,7 @@
   #game-view.focus-mode .seq-card .artist { font-size: 2.5cqmin; }
   #game-view.focus-mode .seq-progress { font-size: 2.4cqmin; }
 
-  #game-view.choosing-chrome .prompt-box { font-size: 4cqmin; padding: 0.4cqh 200px; margin: 2px auto calc(1.2cqh + 20px); max-width: 88cqw; }
+  #game-view.choosing-chrome .prompt-box { font-size: 4cqmin; padding: 0.4cqh 200px; margin: 2px auto calc(1.2cqh + 40px); max-width: 88cqw; }
   /* Since the room code/QR code stay full size now, the header row is taller than when the
      earlier -60px attempt on just the prompt box caused overlap — spreading the remaining
      reduction across several smaller margins instead of one large negative one, to keep
@@ -232,7 +235,7 @@
      still occupies space from the room code/QR elements even with the logo hidden — this
      clipped the top of the prompt behind it. Reclaiming that space properly by shrinking the
      header row itself instead (same reduction already used for video-focus mode). */
-  .tv-frame:has(#game-view.choosing-chrome) .header-row { margin-top: 0; }
+  .tv-frame:has(#game-view.header-compact) .header-row { margin-top: 0; }
   #game-view.choosing-chrome .prompt-box .prompt-label { font-size: 2.2cqmin; margin-bottom: 0.5cqh; }
 
   .reveal-list { display: flex; flex-direction: column; gap: 1.2cqh; text-align: left; margin-top: 2cqh; max-width: 72cqw; margin-left: auto; margin-right: auto; max-height: 55cqh; overflow-y: auto; }
@@ -823,48 +826,33 @@
     sendEndGame();
   });
 
-  function sendEndGame(retriesLeft) {
-    if (retriesLeft === undefined) retriesLeft = 4;
-    let confirmed = false;
-    socket.emit('host:end-game', {}, (res) => {
-      confirmed = true;
-      endGameBtn.textContent = 'End Game';
-      // A response of ok:false means the command genuinely reached the server but the game
-      // was already over or something else changed — no need to retry, the button just
-      // silently does nothing further, matching the original behavior for that case.
-    });
-    // If the command never even reaches the server (a "zombie" connection — the browser
-    // thinks it's fine but no packets are actually getting through), no ack ever comes back.
-    // A single retry wasn't always enough — if that attempt also lands on a connection that
-    // hasn't actually recovered yet, there was nothing left to fall back on, leaving the
-    // person needing to manually hit "Refresh Connection" themselves. This now keeps retrying
-    // (forcing a fresh reconnect each time) until it succeeds or runs out of attempts.
-    setTimeout(() => {
-      if (confirmed) return;
-      if (retriesLeft <= 0) {
-        endGameBtn.textContent = 'End Game';
-        return;
+  function sendEndGame() {
+    // Always forces a fresh reconnect first, every time, rather than trying the command
+    // directly and only reconnecting as a fallback if it timed out. A "zombie" connection
+    // (the browser thinks it's fine, but nothing's actually getting through) gives no
+    // indication of a problem until something times out — forcing the reconnect upfront
+    // means End Game isn't gambling on the existing connection actually working.
+    endGameBtn.textContent = 'Reconnecting…';
+    socket.disconnect();
+    socket.connect();
+    socket.once('connect', () => {
+      const savedRoomCode = loadHostRoomCode();
+      const triggerEndGame = () => {
+        socket.emit('host:end-game', {}, () => {
+          endGameBtn.textContent = 'End Game';
+        });
+      };
+      if (savedRoomCode) {
+        // Waiting for this specific ack, not a fixed delay — the server only accepts
+        // host:end-game from whatever socket id it currently has on file as the host, and
+        // that only updates once this resume call actually completes.
+        socket.emit('host:resume-room', { code: savedRoomCode }, () => {
+          triggerEndGame();
+        });
+      } else {
+        triggerEndGame();
       }
-      endGameBtn.textContent = 'Reconnecting…';
-      socket.disconnect();
-      socket.connect();
-      socket.once('connect', () => {
-        // Explicitly resuming here and waiting for its own ack, rather than just a fixed
-        // delay after 'connect' — the server only accepts host:end-game from whatever socket
-        // id it currently has on file as the host, and that only updates once host:resume-room
-        // actually completes. A flat delay was a guess at how long that takes; on the exact
-        // kind of degraded connection this retry exists for, guessing wrong meant the retry
-        // itself failed the same way the original attempt did.
-        const savedRoomCode = loadHostRoomCode();
-        if (savedRoomCode) {
-          socket.emit('host:resume-room', { code: savedRoomCode }, () => {
-            sendEndGame(retriesLeft - 1);
-          });
-        } else {
-          sendEndGame(retriesLeft - 1);
-        }
-      });
-    }, 1500);
+    });
   }
 
   function resetEndGameBtn() {
@@ -1034,10 +1022,13 @@
     lobbyView.classList.add('hidden');
     gameoverView.classList.add('hidden');
     gameView.classList.remove('hidden');
-    // Round tracker lives above the prompt during song selection, at its normal size — moved
-    // back here in case it was last relocated into the header for voting.
-    roundLabelEl.classList.remove('round-label-in-header');
-    promptBoxEl.insertAdjacentElement('beforebegin', roundLabelEl);
+    // Song selection now shares the same compact header treatment as voting (hidden
+    // logo/title, shrunk QR/room code, round tracker relocated into the header at 1.5x size),
+    // and also stays top-aligned the same way voting does.
+    gameView.classList.add('header-compact');
+    document.querySelector('.header-center').appendChild(roundLabelEl);
+    roundLabelEl.classList.add('round-label-in-header');
+    roundLabelEl.classList.remove('hidden');
     exitSequentialFocus();
     // Move the status text back to its original spot (right after the player chips) — during
     // voting it gets relocated to sit under the song cards instead.
@@ -1089,6 +1080,10 @@
   // top-aligning this content and sometimes falling back to the default centered layout.
   function enterChoosingChrome() {
     gameView.classList.add('choosing-chrome');
+    // Already set from round-started in the normal flow, but included here too so this
+    // function is self-contained and correct even if ever triggered independently (e.g. the
+    // polling self-heal's own catch-up path).
+    gameView.classList.add('header-compact');
     wrapEl.style.justifyContent = 'flex-start';
     wrapEl.style.paddingTop = '0';
   }
@@ -1280,6 +1275,7 @@
     stopAllPlayback();
     startBgMusic();
     exitSequentialFocus();
+    gameView.classList.remove('header-compact');
     // lobbyView starts visible by default on a fresh page load and was never explicitly
     // hidden here — refreshing while on game-over would leave the (freshly-updated) lobby
     // code/QR and the old final scores both visible at once.
