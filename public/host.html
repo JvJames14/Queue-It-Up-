@@ -45,6 +45,11 @@
   .tv-frame.video-focus:not(.cover-showing) .mini-code { font-size: 3.8cqmin; }
   #qrcode { background: #fff; padding: 4px; border-radius: 0.6cqmin; line-height: 0; }
   #qrcode img, #qrcode canvas { width: 180px !important; height: 180px !important; }
+  /* The QR code is the tallest thing in the header row, so it's what's actually governing
+     the header's height — shrinking it here (without touching the room code text) is a
+     direct, reliable way to reduce the header's footprint during voting specifically. */
+  .tv-frame:has(#game-view.choosing-chrome) #qrcode img,
+  .tv-frame:has(#game-view.choosing-chrome) #qrcode canvas { width: 120px !important; height: 120px !important; }
   .tv-frame.video-focus:not(.cover-showing) #qrcode img,
   .tv-frame.video-focus:not(.cover-showing) #qrcode canvas { width: 102px !important; height: 102px !important; }
   .qr-unavailable { font-size: 0.7cqmin; color: var(--muted); }
@@ -110,9 +115,13 @@
   .logo-mark { font-size: 18cqmin; line-height: 1; margin-bottom: 0.8cqh; filter: drop-shadow(0 0 2.2cqmin rgba(255,61,154,0.4)); }
   /* Removed entirely (not just shrunk) while the song cards are on screen (voting) — freeing
      up vertical space so the cards don't collide with the fixed Refresh Connection/End Game
-     buttons in the bottom corners. */
-  .tv-frame:has(#game-view.choosing-chrome) .logo-mark,
-  .tv-frame:has(#game-view.choosing-chrome) h1 { display: none; }
+     buttons in the bottom corners. Scoped to .header-center specifically — the bare
+     .logo-mark/h1 selectors previously also matched the unrelated copies inside #start-view,
+     so refreshing mid-game (which can land straight in choosing-chrome via the catch-up
+     logic, before the person ever clicks Play) was incorrectly hiding the splash screen's
+     own logo and title too, leaving only the Play button visible. */
+  .tv-frame:has(#game-view.choosing-chrome) .header-center .logo-mark,
+  .tv-frame:has(#game-view.choosing-chrome) .header-center h1 { display: none; }
   h1 {
     font-family: 'Fredoka', -apple-system, sans-serif;
     font-weight: 700;
@@ -134,6 +143,10 @@
     animation: titlePulse 2.2s ease-in-out infinite;
   }
   .round-header { font-family: 'Fredoka', sans-serif; font-size: 2.7cqmin; font-weight: 600; color: var(--muted); margin-top: 20px; margin-bottom: 0.9cqh; }
+  /* Used when the round tracker is relocated into the header itself during voting — 1.5x the
+     normal size, with the margins reset since the 20px top margin made sense in its usual
+     spot in the content flow, not sitting inside the header row. */
+  .round-header.round-label-in-header { font-size: 4.05cqmin; margin: 0; }
   .lobby-top-row { display: flex; align-items: center; justify-content: center; gap: 5cqw; flex-wrap: wrap; }
   .code-box {
     background: linear-gradient(135deg, var(--accent-2), var(--accent));
@@ -208,12 +221,18 @@
   #game-view.focus-mode .seq-card .artist { font-size: 2.5cqmin; }
   #game-view.focus-mode .seq-progress { font-size: 2.4cqmin; }
 
-  #game-view.choosing-chrome .prompt-box { font-size: 4cqmin; padding: 0.4cqh 200px; margin: 20px auto 1.2cqh; max-width: 88cqw; }
+  #game-view.choosing-chrome .prompt-box { font-size: 4cqmin; padding: 0.4cqh 200px; margin: 2px auto calc(1.2cqh + 20px); max-width: 88cqw; }
+  /* Since the room code/QR code stay full size now, the header row is taller than when the
+     earlier -60px attempt on just the prompt box caused overlap — spreading the remaining
+     reduction across several smaller margins instead of one large negative one, to keep
+     enough clearance from that taller header. */
+  #game-view.choosing-chrome .round-header { margin-top: -5px; margin-bottom: 0.4cqh; }
+  #game-view.choosing-chrome .judge-banner { margin-bottom: 0.6cqh; }
   /* The negative-margin approach tried previously risked overlapping the header row, which
      still occupies space from the room code/QR elements even with the logo hidden — this
      clipped the top of the prompt behind it. Reclaiming that space properly by shrinking the
      header row itself instead (same reduction already used for video-focus mode). */
-  .tv-frame:has(#game-view.choosing-chrome) .header-row { margin-top: 0.4cqh; }
+  .tv-frame:has(#game-view.choosing-chrome) .header-row { margin-top: 0; }
   #game-view.choosing-chrome .prompt-box .prompt-label { font-size: 2.2cqmin; margin-bottom: 0.5cqh; }
 
   .reveal-list { display: flex; flex-direction: column; gap: 1.2cqh; text-align: left; margin-top: 2cqh; max-width: 72cqw; margin-left: auto; margin-right: auto; max-height: 55cqh; overflow-y: auto; }
@@ -538,7 +557,12 @@
       // its sizing/positioning — the controller already drives playback through this app, so
       // that overlay was never actually needed, and removing it sidesteps the cropping issue
       // outright instead of trying to fix where it's drawn.
-      playerVars: { rel: 0, controls: 0, modestbranding: 1, disablekb: 1, fs: 0, iv_load_policy: 3 },
+      // controls:0 only partially suppressed the overlay (hid settings/captions, left the
+      // title bar and playback controls visible) — rather than leave it in that inconsistent
+      // half-hidden state, the full control bar is restored here. modestbranding and fs:0
+      // are kept since they specifically target the YouTube logo/link and fullscreen button
+      // respectively, without touching the rest of the controls.
+      playerVars: { rel: 0, modestbranding: 1, fs: 0, iv_load_policy: 3, autoplay: 1, playsinline: 1, origin: window.location.origin },
       events: {
         onReady: () => {
           ytReady = true;
@@ -718,6 +742,14 @@
   // re-fetch the current player list on a short interval so the display self-corrects within
   // a few seconds if any single broadcast is ever missed, rather than staying stuck.
   setInterval(() => {
+    // Continuously re-applies this regardless of exactly how/when choosing-chrome was last
+    // entered — a safeguard in case something else (a timing race, a code path that wasn't
+    // accounted for) ever resets it, rather than depending on catching every single
+    // transition point perfectly.
+    const isChoosing = gameView.classList.contains('choosing-chrome');
+    wrapEl.style.justifyContent = isChoosing ? 'flex-start' : '';
+    wrapEl.style.paddingTop = isChoosing ? '0' : '';
+
     socket.emit('host:request-players', {}, (res) => {
       if (!res || !res.ok) return;
       renderPlayerChips(lobbyPlayersListEl, res.players, false, true);
@@ -817,7 +849,20 @@
       socket.disconnect();
       socket.connect();
       socket.once('connect', () => {
-        setTimeout(() => sendEndGame(retriesLeft - 1), 500);
+        // Explicitly resuming here and waiting for its own ack, rather than just a fixed
+        // delay after 'connect' — the server only accepts host:end-game from whatever socket
+        // id it currently has on file as the host, and that only updates once host:resume-room
+        // actually completes. A flat delay was a guess at how long that takes; on the exact
+        // kind of degraded connection this retry exists for, guessing wrong meant the retry
+        // itself failed the same way the original attempt did.
+        const savedRoomCode = loadHostRoomCode();
+        if (savedRoomCode) {
+          socket.emit('host:resume-room', { code: savedRoomCode }, () => {
+            sendEndGame(retriesLeft - 1);
+          });
+        } else {
+          sendEndGame(retriesLeft - 1);
+        }
       });
     }, 1500);
   }
@@ -989,6 +1034,10 @@
     lobbyView.classList.add('hidden');
     gameoverView.classList.add('hidden');
     gameView.classList.remove('hidden');
+    // Round tracker lives above the prompt during song selection, at its normal size — moved
+    // back here in case it was last relocated into the header for voting.
+    roundLabelEl.classList.remove('round-label-in-header');
+    promptBoxEl.insertAdjacentElement('beforebegin', roundLabelEl);
     exitSequentialFocus();
     // Move the status text back to its original spot (right after the player chips) — during
     // voting it gets relocated to sit under the song cards instead.
@@ -1094,6 +1143,11 @@
     roundLabelEl.classList.remove('hidden');
     judgeBannerEl.classList.remove('hidden');
     promptBoxEl.classList.remove('hidden');
+    // Relocated into the header itself during voting — centered there (that container is
+    // already text-align:center) at 1.5x its normal size, replacing the logo/title that are
+    // hidden in this layout anyway.
+    document.querySelector('.header-center').appendChild(roundLabelEl);
+    roundLabelEl.classList.add('round-label-in-header');
     // Keeping the vote counter text visible, but not the full chip row — too cluttered
     // alongside the song cards. Move it to sit under those cards instead of its picking-phase
     // spot right after the player chips, matching where it visually belongs during voting.
@@ -1226,7 +1280,15 @@
     stopAllPlayback();
     startBgMusic();
     exitSequentialFocus();
+    // lobbyView starts visible by default on a fresh page load and was never explicitly
+    // hidden here — refreshing while on game-over would leave the (freshly-updated) lobby
+    // code/QR and the old final scores both visible at once.
+    lobbyView.classList.add('hidden');
     gameView.classList.add('hidden');
+    // Hidden explicitly — without this, if the game ends while the round tracker happens to
+    // be sitting inside the header (relocated there during voting), it would stay visible on
+    // the final scores screen too, since the header persists across every screen.
+    roundLabelEl.classList.add('hidden');
     gameoverView.classList.remove('hidden');
     sfx.nextRound();
     finalScoreboardEl.innerHTML = '';
