@@ -904,15 +904,15 @@ io.on('connection', (socket) => {
   });
 
   // ---- Controller removes a player from the lobby ----
-  socket.on('controller:remove-player', ({ playerId }) => {
+  socket.on('controller:remove-player', ({ playerId }, ack) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
     // Allowed in the lobby (before/between games) and at game-over (deciding who's still in
     // before heading back to the lobby) — not mid-game, where it could disrupt an active round.
-    if (!room || (room.phase !== 'lobby' && room.phase !== 'game-over')) return;
+    if (!room || (room.phase !== 'lobby' && room.phase !== 'game-over')) return ack?.({ ok: false });
     // Either the controller (from their phone) or the host (TV) can remove a stale player.
-    if (socket.id !== room.controllerSocketId && socket.id !== room.hostSocketId) return;
-    if (!room.players.has(playerId)) return;
+    if (socket.id !== room.controllerSocketId && socket.id !== room.hostSocketId) return ack?.({ ok: false });
+    if (!room.players.has(playerId)) return ack?.({ ok: false });
 
     const wasController = playerId === room.controllerSocketId;
     room.players.delete(playerId);
@@ -927,16 +927,17 @@ io.on('connection', (socket) => {
       playerSocket.disconnect(true);
     }
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
+    ack?.({ ok: true });
   });
 
   // ---- Remove every audience member at once — the host lobby screen's audience counter
   // chip has no way to target one specific person individually, so its own X removes them
   // all in one action. ----
-  socket.on('controller:remove-all-audience', () => {
+  socket.on('controller:remove-all-audience', (_data, ack) => {
     const roomCode = socket.data.roomCode;
     const room = rooms.get(roomCode);
-    if (!room || (room.phase !== 'lobby' && room.phase !== 'game-over')) return;
-    if (socket.id !== room.controllerSocketId && socket.id !== room.hostSocketId) return;
+    if (!room || (room.phase !== 'lobby' && room.phase !== 'game-over')) return ack?.({ ok: false });
+    if (socket.id !== room.controllerSocketId && socket.id !== room.hostSocketId) return ack?.({ ok: false });
 
     const audienceIds = Array.from(room.players.entries())
       .filter(([, p]) => p.role === 'audience')
@@ -951,6 +952,7 @@ io.on('connection', (socket) => {
       }
     }
     io.to(roomCode).emit('room:players-updated', playerListPayload(room));
+    ack?.({ ok: true });
   });
 
   // ---- Active player submits/updates their pick ----

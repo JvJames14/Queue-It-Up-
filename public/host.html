@@ -826,32 +826,35 @@
     sendEndGame();
   });
 
-  function sendEndGame() {
-    // Always forces a fresh reconnect first, every time, rather than trying the command
-    // directly and only reconnecting as a fallback if it timed out. A "zombie" connection
-    // (the browser thinks it's fine, but nothing's actually getting through) gives no
-    // indication of a problem until something times out — forcing the reconnect upfront
-    // means End Game isn't gambling on the existing connection actually working.
-    endGameBtn.textContent = 'Reconnecting…';
+  // Shared by every host-initiated action that needs to actually reach the server reliably —
+  // always forces a fresh reconnect first, waits for it to genuinely complete (not a guessed
+  // delay), then runs the given action. A "zombie" connection (the browser thinks it's fine,
+  // but nothing's actually getting through) gives no indication of a problem until something
+  // times out, so this never gambles on the existing connection actually working.
+  function reconnectThenRun(action) {
     socket.disconnect();
     socket.connect();
     socket.once('connect', () => {
       const savedRoomCode = loadHostRoomCode();
-      const triggerEndGame = () => {
-        socket.emit('host:end-game', {}, () => {
-          endGameBtn.textContent = 'End Game';
-        });
-      };
       if (savedRoomCode) {
         // Waiting for this specific ack, not a fixed delay — the server only accepts
-        // host:end-game from whatever socket id it currently has on file as the host, and
-        // that only updates once this resume call actually completes.
+        // host-initiated commands from whatever socket id it currently has on file as the
+        // host, and that only updates once this resume call actually completes.
         socket.emit('host:resume-room', { code: savedRoomCode }, () => {
-          triggerEndGame();
+          action();
         });
       } else {
-        triggerEndGame();
+        action();
       }
+    });
+  }
+
+  function sendEndGame() {
+    endGameBtn.textContent = 'Reconnecting…';
+    reconnectThenRun(() => {
+      socket.emit('host:end-game', {}, () => {
+        endGameBtn.textContent = 'End Game';
+      });
     });
   }
 
@@ -954,15 +957,23 @@
     }
 
     if (showRemoveBtn) {
+      // Routed through reconnectThenRun — same reasoning as End Game: this command has no
+      // feedback if it silently fails to reach the server over a "zombie" connection, so a
+      // stale player's X could look like it's just not working with no indication why.
       container.querySelectorAll('.remove-player-btn[data-player-id]').forEach(btn => {
         btn.addEventListener('click', () => {
-          socket.emit('controller:remove-player', { playerId: btn.dataset.playerId });
+          const playerId = btn.dataset.playerId;
+          reconnectThenRun(() => {
+            socket.emit('controller:remove-player', { playerId });
+          });
         });
       });
       const removeAllAudienceBtn = container.querySelector('.remove-player-btn[data-remove-all-audience]');
       if (removeAllAudienceBtn) {
         removeAllAudienceBtn.addEventListener('click', () => {
-          socket.emit('controller:remove-all-audience');
+          reconnectThenRun(() => {
+            socket.emit('controller:remove-all-audience');
+          });
         });
       }
     }
